@@ -4,9 +4,7 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DjTtakdotNet.Services;
-using DjTtakdotNet.utils;
 using Serilog;
-using Serilog.Core;
 using Serilog.Events;
 
 namespace DjTtakdotNet;
@@ -42,7 +40,7 @@ class Program
                 .WriteTo.Console()
                 .CreateLogger();
 
-            var  configuration = new ConfigurationBuilder()
+            var configuration = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json", optional: true)
                 .Build();
 

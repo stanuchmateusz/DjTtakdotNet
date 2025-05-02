@@ -31,4 +31,8 @@
       </Compile>
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="utils\" />
+    </ItemGroup>
+
 </Project>

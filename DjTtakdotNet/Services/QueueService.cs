@@ -9,45 +9,43 @@ public class QueueService
     public enum LoopMode { None, Single, All }
     
     private readonly ConcurrentQueue<TrackInfo> _queue = new();
-    private TrackInfo _currentTrack;
-    private LoopMode _loopMode = LoopMode.None;
 
     public void AddToQueue(TrackInfo track)
     {
         _queue.Enqueue(track);
     }
 
-    public TrackInfo GetNextTrack()
+    public TrackInfo? GetNextTrack()
     {
         
-            if (_loopMode == LoopMode.Single && _currentTrack != null)
-                return _currentTrack;
+            if (CurrentLoopMode == LoopMode.Single && CurrentTrack != null)
+                return CurrentTrack;
 
             if (_queue.TryDequeue(out var track))
             {
-                if (_loopMode == LoopMode.All)
+                if (CurrentLoopMode == LoopMode.All)
                     _queue.Enqueue(track);
                 
-                _currentTrack = track;
+                CurrentTrack = track;
                 return track;
             }
 
-            if (_loopMode == LoopMode.Single && _currentTrack != null)
-                return _currentTrack;
+            if (CurrentLoopMode == LoopMode.Single && CurrentTrack != null)
+                return CurrentTrack;
 
-            _currentTrack = null;
+            CurrentTrack = null;
             return null;
     }
 
     public void ClearQueue()
     {
         while (_queue.TryDequeue(out _)) { }
-        _currentTrack = null;
+        CurrentTrack = null;
     }
     
     public bool IsIdle()
     {
-        return _queue.IsEmpty && _currentTrack == null;
+        return _queue.IsEmpty && CurrentTrack == null;
     }
   
     public bool RemoveTrack(Guid trackId)
@@ -63,16 +61,16 @@ public class QueueService
 
     public LoopMode ToggleLoop()
     {
-        _loopMode = _loopMode switch
+        CurrentLoopMode = CurrentLoopMode switch
         {
             LoopMode.None => LoopMode.Single,
             LoopMode.Single => LoopMode.All,
             _ => LoopMode.None
         };
-        return _loopMode;
+        return CurrentLoopMode;
     }
 
     public IEnumerable<TrackInfo> GetQueue() => _queue.ToArray();
-    public TrackInfo CurrentTrack => _currentTrack;
-    public LoopMode CurrentLoopMode => _loopMode;
+    public TrackInfo? CurrentTrack { get; private set; }
+    public LoopMode CurrentLoopMode { get; private set; } = LoopMode.None;
 }

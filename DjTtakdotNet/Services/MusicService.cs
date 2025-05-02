@@ -17,7 +17,7 @@ public class MusicService : IDisposable
     private CancellationTokenSource _cts;
     private Timer _inactivityTimer;
     private DateTime _lastActivity;
-    public IVoiceChannel currentChannel { get; }
+    public IVoiceChannel? CurrentChannel { get; set; }
     private readonly QueueService _queueService;
     private bool _isProcessingQueue;
 
@@ -43,6 +43,7 @@ public class MusicService : IDisposable
                 throw new TimeoutException("Przekroczono czas łączenia z kanałem głosowym");
 
             _audioClient = await connectTask;
+            CurrentChannel = channel;
             _lastActivity = DateTime.Now;
             StartInactivityTimer();
         }
@@ -54,23 +55,18 @@ public class MusicService : IDisposable
     }
 
 
-    public async Task<bool> PlayAsync(TrackInfo track)
+    public bool StartQueue(TrackInfo track)
     {
-        bool wasIdle = _queueService.IsIdle();
+        var wasIdle = _queueService.IsIdle();
         _queueService.AddToQueue(track);
+        Log.Debug("Added {0} to then queue",track.Title);
 
-        if (wasIdle)
-        {
-                if (!_isProcessingQueue)
-                {
-                    _isProcessingQueue = true;
-                    _ = ProcessQueueAsync();
-                }
-                
-            return true;
-        }
-
-        return false;
+        if (!wasIdle) return false;
+        if (_isProcessingQueue) return true;
+        
+        _isProcessingQueue = true;
+        _ = ProcessQueueAsync();
+        return true;
     }
 
 
@@ -83,12 +79,11 @@ public class MusicService : IDisposable
                 var track = _queueService.GetNextTrack();
                 if (track == null)
                 {
-                    // Sprawdź ponownie po krótkim opóźnieniu, aby uniknąć ciągłego sprawdzania
                     await Task.Delay(1000);
                     if (_queueService.IsIdle()) break;
                     continue;
                 }
-
+                Log.Debug("PLayTrack {0}", track.Title);
                 await PlayTrackAsync(track);
             }
         }
@@ -99,17 +94,16 @@ public class MusicService : IDisposable
     }
 
 
-    public async Task PlayTrackAsync(TrackInfo track)
+    private async Task PlayTrackAsync(TrackInfo track)
     {
         try
         {
             if (_audioClient?.ConnectionState != ConnectionState.Connected)
                 throw new InvalidOperationException("Brak połączenia głosowego");
-
+            Log.Debug("Stoping current playback");
             StopCurrentPlayback();
             _cts = new CancellationTokenSource();
-
-
+            
             Log.Information("Odtwarzanie: {Track}", track.Title);
 
             var arguments = BuildProcessArguments(track.Url);
@@ -281,6 +275,7 @@ public class MusicService : IDisposable
         StopCurrentPlayback();
         _audioClient?.StopAsync().Wait();
         _audioClient?.Dispose();
+        CurrentChannel = null;
         _audioClient = null;
     }
 
