@@ -218,7 +218,6 @@ public class MusicService : IDisposable
 
     public static async Task<TrackInfo> GetTrackInfoAsync(string input)
     {
-        //todo use other, faster lib
         var arguments = $"-j --no-playlist --default-search \"ytsearch\" \"{input}\"";
 
         var process = new Process

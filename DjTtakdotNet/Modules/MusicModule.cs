@@ -12,7 +12,7 @@ public class MusicModule : DjTtakInteractionModule
 {
     private readonly MusicService _musicService;
     private readonly QueueService _queueService;
-    
+    private const short MaxTracksPerPage = 10;
     public MusicModule(MusicService musicService, QueueService queueService, IDjTtakConfig config) : base (config)
     {
         _musicService = musicService;
@@ -32,7 +32,7 @@ public class MusicModule : DjTtakInteractionModule
     [SlashCommand("play", "Play from URL or serach and play from YouTube")]
     public async Task PlayCommand(string query)
     {
-        //todo support for youtube playlists
+        //todo add support for youtube playlists
         await DeferAsync();
         try
         {
@@ -90,33 +90,49 @@ public class MusicModule : DjTtakInteractionModule
     }
 
     [SlashCommand("queue", "Print the queue")]
-    public async Task ShowQueue()
+    public async Task ShowQueue(int page = 1)
     {
         var queue = _queueService.GetQueue().ToArray();
         var current = _queueService.CurrentTrack;
 
         var embed = new EmbedBuilder()
-            .WithTitle("🎶 Queue ")
             .WithColor(Color.Blue);
 
         if (current != null)
         {
             embed.AddField("Now playing:", $"[{current.Title}]({current.Url}) ({current.DurationString})");
         }
-        //todo support for longer queues
+
+        var totalPages = (queue.Length + 9) / MaxTracksPerPage;
+        page = Math.Clamp(page, 1, totalPages == 0 ? 1 : totalPages);
+
         if (queue.Any())
         {
-            var queueText = string.Join("\n", queue.Select((t, i) =>
-                $"{i + 1}. [{t.Title.Truncate(30)}]({t.Url}) ({t.DurationString})"));
+            var pagedQueue = queue
+                .Skip((page - 1) * MaxTracksPerPage)
+                .Take(MaxTracksPerPage)
+                .ToArray();
+
+            var queueText = string.Join("\n", pagedQueue.Select((t, index) =>
+            {
+                var position = (page - 1) * MaxTracksPerPage + index + 1;
+                return $"{position}. [{t.Title.Truncate(30)}]({t.Url}) ({t.DurationString})";
+            }));
 
             embed.AddField("Queue:", queueText);
+
+            embed.WithFooter(totalPages > 1
+                ? $"Page {page}/{totalPages} | Loop mode: {_queueService.CurrentLoopMode}"
+                : $"Loop mode: {_queueService.CurrentLoopMode}");
+
+            embed.WithTitle($"🎶 Queue (Page {page}/{totalPages})");
         }
         else
         {
             embed.WithDescription("Queue is empty!");
+            embed.WithFooter($"Loop mode: {_queueService.CurrentLoopMode}");
         }
 
-        embed.WithFooter($"Loop mode: {_queueService.CurrentLoopMode}");
         await RespondAndDispose(embed: embed.Build());
     }
 
