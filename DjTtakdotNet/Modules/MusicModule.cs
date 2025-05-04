@@ -3,37 +3,36 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using DjTtakdotNet.Services;
 using Serilog;
-using System.Diagnostics;
-using System.Globalization;
 using DjTtakdotNet.Music;
+using DjTtakdotNet.Utils;
 
 namespace DjTtakdotNet.Modules;
 
-public class MusicModule : InteractionModuleBase<SocketInteractionContext>
+public class MusicModule : DjTtakInteractionModule
 {
     private readonly MusicService _musicService;
     private readonly QueueService _queueService;
-    private const int DeleteTimeInMs = 1000 * 120;
     
-    public MusicModule(MusicService musicService, QueueService queueService)
+    public MusicModule(MusicService musicService, QueueService queueService, IDjTtakConfig config) : base (config)
     {
         _musicService = musicService;
         _queueService = queueService;
         AppDomain.CurrentDomain.ProcessExit += OnShutdown;
         Console.CancelKeyPress += OnShutdown;
     }
-    [SlashCommand("stop", "Zatrzymaj bieżące odtwarzanie")]
+    
+   
+    [SlashCommand("stop", "Stop current playback and leave that channel")]
     public async Task StopPlayback()
     {
         await _musicService.DisconnectAsync();
-        await RespondAsync("Zatrzymano odtwarzanie!");
-        await Task.Delay(DeleteTimeInMs);
-        await DeleteOriginalResponseAsync();
+        await RespondAndDispose("Stopped playback and left the channel");
     }
 
-    [SlashCommand("play", "Odtwórz utwór z YouTube")]
+    [SlashCommand("play", "Play from URL or serach and play from YouTube")]
     public async Task PlayCommand(string query)
     {
+        //todo support for youtube playlists
         await DeferAsync();
         try
         {
@@ -41,14 +40,14 @@ public class MusicModule : InteractionModuleBase<SocketInteractionContext>
             var voiceChannel = user?.VoiceChannel;
             if (voiceChannel == null)
             {
-                var followup = await FollowupAsync("❌ Musisz być na kanale głosowym!");
+                var followup = await FollowupAsync("❌ You have to be on a VoiceChannel!");
                 _ = DeleteAfterDelay(followup);
                 return;
             }
 
             if (_musicService.IsConnected && voiceChannel.GuildId != _musicService.CurrentChannel?.GuildId)
             {
-                var followup = await FollowupAsync("❌ Dj już jest na innym kanale głosowym!");
+                var followup = await FollowupAsync("❌ DJ is already on different voice channel!");
                 _ = DeleteAfterDelay(followup);
                 return;
             }
@@ -62,8 +61,7 @@ public class MusicModule : InteractionModuleBase<SocketInteractionContext>
             }
 
             var isNowPlaying = _musicService.StartQueue(trackInfo);
-
-
+            
             var embed = new EmbedBuilder();
             if (isNowPlaying)
             {
@@ -72,7 +70,7 @@ public class MusicModule : InteractionModuleBase<SocketInteractionContext>
             else
             {
                 embed
-                    .WithDescription($"✅ Dodano do kolejki: [{trackInfo.Title}]({trackInfo.Url})")
+                    .WithDescription($"✅ Added to queue: [{trackInfo.Title}]({trackInfo.Url})")
                     .WithColor(Color.Green);
             }
             var response = await FollowupAsync(embed: embed.Build());
@@ -80,133 +78,117 @@ public class MusicModule : InteractionModuleBase<SocketInteractionContext>
         }
         catch (TrackNotFoundException ex)
         {
-            var followup = await FollowupAsync("❌ Nie udało znaleźć się wyszukiwanej frazy");
+            var followup = await FollowupAsync("❌ Failed to find requested track!");
             _ = DeleteAfterDelay(followup);
         }
         catch (Exception ex)
         {
             Log.Error(exception:ex, "Error during playback");
-            var followup = await FollowupAsync($"❌ Wystąpił nieznany błąd podczas odtwarzania");
+            var followup = await FollowupAsync($"❌ There was an error during playback, please try again later.");
             _ = DeleteAfterDelay(followup);
         }
     }
 
-    [SlashCommand("queue", "Wyświetl kolejkę odtwarzania")]
+    [SlashCommand("queue", "Print the queue")]
     public async Task ShowQueue()
     {
         var queue = _queueService.GetQueue().ToArray();
         var current = _queueService.CurrentTrack;
 
         var embed = new EmbedBuilder()
-            .WithTitle("🎶 Kolejka odtwarzania")
+            .WithTitle("🎶 Queue ")
             .WithColor(Color.Blue);
 
         if (current != null)
         {
-            embed.AddField("Teraz gra:", $"[{current.Title}]({current.Url}) ({current.DurationString})");
+            embed.AddField("Now playing:", $"[{current.Title}]({current.Url}) ({current.DurationString})");
         }
-
+        //todo support for longer queues
         if (queue.Any())
         {
             var queueText = string.Join("\n", queue.Select((t, i) =>
                 $"{i + 1}. [{t.Title.Truncate(30)}]({t.Url}) ({t.DurationString})"));
 
-            embed.AddField("Kolejka:", queueText);
+            embed.AddField("Queue:", queueText);
         }
         else
         {
-            embed.WithDescription("Kolejka jest pusta!");
+            embed.WithDescription("Queue is empty!");
         }
 
-        embed.WithFooter($"Tryb powtarzania: {_queueService.CurrentLoopMode}");
-        await RespondAsync(embed: embed.Build());
-        await Task.Delay(DeleteTimeInMs);
-        await DeleteOriginalResponseAsync();
+        embed.WithFooter($"Loop mode: {_queueService.CurrentLoopMode}");
+        await RespondAndDispose(embed: embed.Build());
     }
 
-    [SlashCommand("nowplaying", "Pokaż obecnie grany utwór")]
+    [SlashCommand("nowplaying", "Show info about currently playing")]
     public async Task NowPlaying()
     {
         var track = _queueService.CurrentTrack;
 
         if (track == null)
         {
-            await RespondAsync("Nic nie jest teraz odtwarzane!");
+            await RespondAsync("There's no current playing track!");
             return;
         }
 
         var embed = BuildNowPlayingEmbed(new EmbedBuilder(), track)
-            .AddField("Pozycja w kolejce", $"#{_queueService.GetQueue().Count() + 1}")
-            .WithFooter($"ID: {track.Id}");
-
-        await RespondAsync(embed: embed.Build());
-        await Task.Delay(DeleteTimeInMs);
-        await DeleteOriginalResponseAsync();
+            .AddField("Position in queue", $"#{_queueService.GetQueue().Count() + 1}");
+        
+        await RespondAndDispose(embed: embed.Build());
     }
 
-    [SlashCommand("remove", "Usuń utwór z kolejki")]
+    [SlashCommand("remove", "Remove track from queue")]
     public async Task RemoveTrack(string trackId)
-    {
-        if (!Guid.TryParse(trackId, out var guid))
+    {   
+        if (!int.TryParse(trackId, out var id))
         {
-            await RespondAsync("Nieprawidłowe ID utworu!");
-            await Task.Delay(DeleteTimeInMs);
-            await DeleteOriginalResponseAsync();
+            await RespondAndDispose("Invalid track ID!");
             return;
         }
-
-        var removed = _queueService.RemoveTrack(guid);
-        await RespondAsync(removed ? "Utwór usunięty z kolejki!" : "Nie znaleziono utworu w kolejce!");
-        await Task.Delay(DeleteTimeInMs);
-        await DeleteOriginalResponseAsync();
+        var removed = _queueService.RemoveTrack(id - 1);
+        await RespondAndDispose(removed ? "Track removed from the queue!" : "Could not remove track!");
     }
 
-    [SlashCommand("skip", "Pomiń obecny utwór")]
+    [SlashCommand("skip", "Skip current track")]
     public async Task SkipTrack()
     {
         _musicService.StopCurrentPlayback();
-        await RespondAsync("Pomijam obecny utwór...");
-        await Task.Delay(DeleteTimeInMs);
-        await DeleteOriginalResponseAsync();
+        await RespondAndDispose("Skipping current track");
     }
 
-    [SlashCommand("loop", "Zmień tryb powtarzania")]
-    public async Task ToggleLoop()
+    [SlashCommand("loop", "Change the loop mode")]
+    public async Task ToggleLoop(QueueService.LoopMode mode)
     {
-        var newMode = _queueService.ToggleLoop();
+        var newMode = _queueService.CurrentLoopMode = mode;
         var modeText = newMode switch
         {
-            QueueService.LoopMode.None => "Wyłączone",
-            QueueService.LoopMode.Single => "Powtarzanie utworu",
-            QueueService.LoopMode.All => "Powtarzanie kolejki",
+            QueueService.LoopMode.None => "OFF",
+            QueueService.LoopMode.Single => "Single track loop",
+            QueueService.LoopMode.All => "Queue loop",
             _ => throw new ArgumentOutOfRangeException()
         };
 
-        await RespondAsync($"Tryb powtarzania: **{modeText}**");
-        await Task.Delay(DeleteTimeInMs);
-        await DeleteOriginalResponseAsync();
+        await RespondAndDispose($"Loop mode: **{modeText}**");
     }
 
-    [SlashCommand("clear", "Czyści kolejkę")]
+    [SlashCommand("clear", "Clears the queue")]
     public async Task ClearTrack()
     {
         _queueService.ClearQueue();
-        await RespondAsync("Kolejka została wyczyszczona");
-        await Task.Delay(DeleteTimeInMs);
-        await DeleteOriginalResponseAsync();
+        await RespondAndDispose("Queue cleared!");
     }
 
     private EmbedBuilder BuildNowPlayingEmbed(EmbedBuilder builder, TrackInfo trackInfo)
     {
         return builder
-            .WithTitle("🎶 Teraz odtwarzam")
+            .WithTitle("🎶 Now playing")
             .WithDescription($"[{trackInfo.Title}]({trackInfo.Url})")
             .WithColor(new Color(0x1DB954))
             .WithThumbnailUrl(trackInfo.Thumbnail)
-            .AddField("Autor", trackInfo.Uploader, true)
-            .AddField("Czas trwania", trackInfo.Duration.ToString(@"mm\:ss"), true)
-            .AddField("Wyszukiwana fraza", $"`{trackInfo.Query.Truncate(50)}`")
-            .WithFooter(f => f.Text = $"Żądane przez {Context.User.Username}")
+            .AddField("By:", trackInfo.Uploader, true)
+            .AddField("Length:", trackInfo.Duration.ToString(@"mm\:ss"), true)
+            .AddField("Search phrase:", $"`{trackInfo.Query.Truncate(50)}`")
+            .WithFooter(f => f.Text = $"Requested by: {Context.User.Username}")
             .WithCurrentTimestamp();
     }
 
@@ -215,9 +197,9 @@ public class MusicModule : InteractionModuleBase<SocketInteractionContext>
         _musicService.DisconnectAsync().GetAwaiter().GetResult();
     }
     
-    private static async Task DeleteAfterDelay(IUserMessage message)
+    private async Task DeleteAfterDelay(IUserMessage message)
     {
-        await Task.Delay(DeleteTimeInMs);
+        await Task.Delay(DjTtakDjTtakConfig.DeleteMessageTimeout);
         try
         {
             await message.DeleteAsync();

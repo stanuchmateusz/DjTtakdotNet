@@ -13,26 +13,26 @@
     </ItemGroup>
 
     <ItemGroup>
-      <EmbeddedResource Update="Resources\CommandLocales.resx">
+      <EmbeddedResource Update="Resources\DjTtakLocales.resx">
         <Generator>ResXFileCodeGenerator</Generator>
         <LastGenOutput>CommandLocales.Designer.cs</LastGenOutput>
       </EmbeddedResource>
-      <EmbeddedResource Update="Resources\CommandLocales.pl.resx">
+      <EmbeddedResource Update="Resources\DjTtakLocales.pl.resx">
         <Generator>ResXFileCodeGenerator</Generator>
-        <LastGenOutput>CommandLocales.Designer.cs</LastGenOutput>
+        <LastGenOutput>DjTtakLocales.Designer.cs</LastGenOutput>
       </EmbeddedResource>
     </ItemGroup>
 
     <ItemGroup>
-      <Compile Update="Resources\CommandLocales.Designer.cs">
+      <Compile Update="Resources\DjTtakLocales.Designer.cs">
         <DesignTime>True</DesignTime>
         <AutoGen>True</AutoGen>
-        <DependentUpon>CommandLocales.resx</DependentUpon>
+        <DependentUpon>DjTtakLocales.resx</DependentUpon>
       </Compile>
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="utils\" />
+      <None Remove="Properties\launchSettings.json" />
     </ItemGroup>
 
 </Project>

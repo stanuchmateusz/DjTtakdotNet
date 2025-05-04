@@ -48,29 +48,22 @@ public class QueueService
         return _queue.IsEmpty && CurrentTrack == null;
     }
   
-    public bool RemoveTrack(Guid trackId)
+    public bool RemoveTrack(int trackPos)
     {
+        if (trackPos < 0 || trackPos >= _queue.Count)
+            return false;
+
         var tempList = _queue.ToList();
-        var removed = tempList.RemoveAll(t => t.Id == trackId);
+        tempList.RemoveAt(trackPos);
+    
         _queue.Clear();
         foreach (var item in tempList)
             _queue.Enqueue(item);
+    
+        return true;
+    }
         
-        return removed > 0;
-    }
-
-    public LoopMode ToggleLoop()
-    {
-        CurrentLoopMode = CurrentLoopMode switch
-        {
-            LoopMode.None => LoopMode.Single,
-            LoopMode.Single => LoopMode.All,
-            _ => LoopMode.None
-        };
-        return CurrentLoopMode;
-    }
-
     public IEnumerable<TrackInfo> GetQueue() => _queue.ToArray();
     public TrackInfo? CurrentTrack { get; private set; }
-    public LoopMode CurrentLoopMode { get; private set; } = LoopMode.None;
+    public LoopMode CurrentLoopMode { get; set; } = LoopMode.None;
 }

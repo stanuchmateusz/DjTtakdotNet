@@ -4,12 +4,13 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DjTtakdotNet.Services;
+using DjTtakdotNet.Utils;
 using Serilog;
 using Serilog.Events;
 
 namespace DjTtakdotNet;
 
-class Program
+static class Program
 {
     private static DiscordSocketClient Client;
     private static readonly DiscordSocketConfig SocketConfig = new()
@@ -25,7 +26,8 @@ class Program
 
     private static readonly InteractionServiceConfig InteractionServiceConfig = new()
     {
-        LocalizationManager = new ResxLocalizationManager("DjTtakdotNet.Resources.CommandLocales", Assembly.GetEntryAssembly(),
+        //todo not implemented
+        LocalizationManager = new ResxLocalizationManager("DjTtakdotNet.Resources.DjTtakLocales", Assembly.GetEntryAssembly(),
             new CultureInfo("en-US"), new CultureInfo("pl"))
     };
 
@@ -41,11 +43,13 @@ class Program
                 .CreateLogger();
 
             var configuration = new ConfigurationBuilder()
-                .AddJsonFile("appsettings.json", optional: true)
+                .AddJsonFile("appsettings.json", optional: false)
                 .Build();
-
+            
+            var djTtakConfig = new DjTtakConfig(configuration);
+            
             var services = new ServiceCollection()
-                .AddSingleton(configuration)
+                .AddSingleton<IDjTtakConfig>(djTtakConfig)
                 .AddSingleton(SocketConfig)
                 .AddSingleton<DiscordSocketClient>()
                 .AddSingleton<MusicService>()
@@ -60,13 +64,13 @@ class Program
             Client.Log += LogAsync;
             Client.Ready += async () =>
             {
-                Log.Information("Bot gotowy jako {0}",Client.CurrentUser);
-                await Client.SetActivityAsync(new Game("Muzykę 🎵"));
+                Log.Information("Bot is ready {0}",Client.CurrentUser.Username);
+                await Client.SetActivityAsync(new Game("Music 🎵"));
             };
             await services.GetRequiredService<InteractionHandler>()
                 .InitializeAsync();
-
-            await Client.LoginAsync(TokenType.Bot, configuration["DjTtak:Token"]);
+            
+            await Client.LoginAsync(TokenType.Bot, djTtakConfig.Token);
             await Client.StartAsync();
 
             await Task.Delay(Timeout.Infinite);

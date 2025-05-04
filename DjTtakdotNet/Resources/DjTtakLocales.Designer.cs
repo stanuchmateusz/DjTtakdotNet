@@ -21,14 +21,14 @@ namespace DiscordNetTestBot.Properties {
     [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "4.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
-    internal class CommandLocales_pl {
+    internal class DjTtakLocales {
         
         private static global::System.Resources.ResourceManager resourceMan;
         
         private static global::System.Globalization.CultureInfo resourceCulture;
         
         [global::System.Diagnostics.CodeAnalysis.SuppressMessageAttribute("Microsoft.Performance", "CA1811:AvoidUncalledPrivateCode")]
-        internal CommandLocales_pl() {
+        internal DjTtakLocales() {
         }
         
         /// <summary>
@@ -38,7 +38,7 @@ namespace DiscordNetTestBot.Properties {
         internal static global::System.Resources.ResourceManager ResourceManager {
             get {
                 if (object.ReferenceEquals(resourceMan, null)) {
-                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("DjTtakdotNet.Resources.CommandLocales.pl", typeof(CommandLocales_pl).Assembly);
+                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("DjTtakdotNet.Resources.DjTtakLocales", typeof(DjTtakLocales).Assembly);
                     resourceMan = temp;
                 }
                 return resourceMan;
@@ -60,29 +60,20 @@ namespace DiscordNetTestBot.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Powtarza wiadomość.
+        ///   Looks up a localized string similar to play.
         /// </summary>
-        internal static string echo_description {
+        internal static string play {
             get {
-                return ResourceManager.GetString("echo.description", resourceCulture);
+                return ResourceManager.GetString("play", resourceCulture);
             }
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Oznacz użytkownika.
+        ///   Looks up a localized string similar to Plays from provided url or searches youtube and plays best result..
         /// </summary>
-        internal static string echo_mention_description {
+        internal static string play_description {
             get {
-                return ResourceManager.GetString("echo.mention.description", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to echo.
-        /// </summary>
-        internal static string echo_name {
-            get {
-                return ResourceManager.GetString("echo.name", resourceCulture);
+                return ResourceManager.GetString("play.description", resourceCulture);
             }
         }
     }

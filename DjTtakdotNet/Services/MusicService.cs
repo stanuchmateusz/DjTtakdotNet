@@ -31,7 +31,7 @@ public class MusicService : IDisposable
     public async Task JoinChannelAsync(IVoiceChannel channel)
     {
         if (_audioClient != null)
-            throw new InvalidOperationException("Bot jest już podłączony do innego kanału!");
+            throw new InvalidOperationException("Dj is already connected!");
 
         try
         {
@@ -40,7 +40,7 @@ public class MusicService : IDisposable
 
             var completedTask = await Task.WhenAny(connectTask, timeoutTask);
             if (completedTask == timeoutTask)
-                throw new TimeoutException("Przekroczono czas łączenia z kanałem głosowym");
+                throw new TimeoutException("Voice channel connection timed out!");
 
             _audioClient = await connectTask;
             CurrentChannel = channel;
@@ -49,8 +49,8 @@ public class MusicService : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Błąd łączenia z kanałem");
-            throw new InvalidOperationException("Nie udało się połączyć z kanałem głosowym");
+            Log.Error(ex, "Error while joining channel");
+            throw new InvalidOperationException("Error while joining channel");
         }
     }
 
@@ -83,7 +83,7 @@ public class MusicService : IDisposable
                     if (_queueService.IsIdle()) break;
                     continue;
                 }
-                Log.Debug("PLayTrack {0}", track.Title);
+                Log.Debug("PlayTrack {0}", track.Title);
                 await PlayTrackAsync(track);
             }
         }
@@ -99,12 +99,13 @@ public class MusicService : IDisposable
         try
         {
             if (_audioClient?.ConnectionState != ConnectionState.Connected)
-                throw new InvalidOperationException("Brak połączenia głosowego");
+                throw new InvalidOperationException("No voice connection established!");
+            
             Log.Debug("Stoping current playback");
             StopCurrentPlayback();
             _cts = new CancellationTokenSource();
             
-            Log.Information("Odtwarzanie: {Track}", track.Title);
+            Log.Information("Playing: {Track}", track.Title);
 
             var arguments = BuildProcessArguments(track.Url);
 
@@ -122,11 +123,11 @@ public class MusicService : IDisposable
             _audioProcess.EnableRaisingEvents = true;
             _audioProcess.Exited += (sender, args) =>
             {
-                Log.Information("Proces audio zakończony: {ExitCode}", _audioProcess.ExitCode);
+                Log.Information("Audio process finished with code: {ExitCode}", _audioProcess.ExitCode);
             };
 
             if (!_audioProcess.Start())
-                throw new InvalidOperationException("Nie udało się uruchomić procesu audio");
+                throw new InvalidOperationException("Failed to start audio process");
 
             _ = LogProcessErrors(_audioProcess.StandardError);
 
@@ -134,8 +135,7 @@ public class MusicService : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Błąd odtwarzania");
-            throw;
+            Log.Error(ex, "Play track failed");
         }
     }
 
@@ -147,12 +147,12 @@ public class MusicService : IDisposable
             while ((error = await errorStream.ReadLineAsync()) != null)
             {
                 if (!string.IsNullOrWhiteSpace(error))
-                    Log.Information("Info procesu: {Error}", error);
+                    Log.Debug("Process info: {Error}", error);
             }
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Błąd czytania strumienia błędów");
+            Log.Error(ex, "Error while processing processes error stream");
         }
     }
 
@@ -211,13 +211,14 @@ public class MusicService : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Błąd strumienia audio");
+            Log.Error(ex, "Audio stream exception");
             throw;
         }
     }
 
     public static async Task<TrackInfo> GetTrackInfoAsync(string input)
     {
+        //todo use other, faster lib
         var arguments = $"-j --no-playlist --default-search \"ytsearch\" \"{input}\"";
 
         var process = new Process
@@ -260,13 +261,23 @@ public class MusicService : IDisposable
         _audioProcess?.Kill();
     }
 
-    public bool IsConnected
+    public bool IsConnected =>
+        _audioClient is { ConnectionState: ConnectionState.Connected }
+        && !_cts.IsCancellationRequested;
+
+    private static void CleanYtDlpFrags()
     {
-        get
+        try
         {
-            return _audioClient != null
-                   && _audioClient.ConnectionState == ConnectionState.Connected
-                   && !_cts.IsCancellationRequested;
+            var frags = Directory.GetFiles(Directory.GetCurrentDirectory(), "--Frag*");
+            foreach (var frag in frags)
+            {
+                File.Delete(frag);
+            }
+        }
+        catch (Exception e)
+        {
+            Log.Error(e, "Error while cleaning up frags");
         }
     }
 
@@ -277,6 +288,7 @@ public class MusicService : IDisposable
         _audioClient?.Dispose();
         CurrentChannel = null;
         _audioClient = null;
+        CleanYtDlpFrags();
     }
 
     void IDisposable.Dispose()

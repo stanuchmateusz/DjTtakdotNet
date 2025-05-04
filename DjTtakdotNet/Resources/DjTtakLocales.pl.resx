@@ -117,16 +117,10 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="echo.name" xml:space="preserve">
-    <value>echo</value>
-    <comment/>
+  <data name="play" xml:space="preserve">
+    <value>graj</value>
   </data>
-  <data name="echo.description" xml:space="preserve">
-    <value>Repeat the input</value>
-    <comment/>
-  </data>
-  <data name="echo.mention.description" xml:space="preserve">
-    <value>mention the user</value>
-    <comment/>
+  <data name="play.description" xml:space="preserve">
+    <value>Gra z podanego url lub wyszukuje daną frazę na youtube, a następnie ją odtwarza.</value>
   </data>
 </root>
