@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  dj-ttak:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./appsettings.json:/app/appsettings.json
+    tty: true

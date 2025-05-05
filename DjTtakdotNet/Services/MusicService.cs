@@ -75,7 +75,7 @@ public class MusicService : IDisposable
         try
         {
             while (true)
-            {
+            { //todo fix connection loop error
                 var track = _queueService.GetNextTrack();
                 if (track == null)
                 {
@@ -177,7 +177,11 @@ public class MusicService : IDisposable
         var ffmpegCmd = $"ffmpeg -hide_banner -loglevel error -re -i pipe:0 " +
                         $"-ac 2 -ar 48000 -f s16le -fflags +nobuffer -flags low_delay -avioflags direct -flush_packets 1 pipe:1\"";
 
-        return $"/C \"{ytdlpCmd} | {ffmpegCmd}\"";
+        var fullCommand = $"{ytdlpCmd} | {ffmpegCmd}";
+
+        return Environment.OSVersion.Platform == PlatformID.Win32NT
+            ? $"/C \"{fullCommand}\""
+            : $"-c \"{fullCommand}\"";
     }
 
     private static string GetShellCommand() =>
