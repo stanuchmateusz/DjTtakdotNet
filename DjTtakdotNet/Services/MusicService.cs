@@ -181,7 +181,7 @@ public class MusicService : IDisposable
 
         return Environment.OSVersion.Platform == PlatformID.Win32NT
             ? $"/C \"{fullCommand}\""
-            : $"-c \"{fullCommand}\"";
+            : fullCommand;
     }
 
     private static string GetShellCommand() =>
