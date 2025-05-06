@@ -1,8 +1,9 @@
 ﻿using Discord.Audio;
-using Discord.WebSocket;
-using System.Diagnostics;
+using System.IO.Pipes;
+using System.Text;
 using System.Text.Json;
 using System.Timers;
+using CliWrap;
 using Discord;
 using DjTtakdotNet.Music;
 using Serilog;
@@ -12,12 +13,11 @@ namespace DjTtakdotNet.Services;
 
 public class MusicService : IDisposable
 {
-    private IAudioClient _audioClient;
-    private Process _audioProcess;
+    private IAudioClient? _audioClient;
     private CancellationTokenSource _cts;
     private Timer _inactivityTimer;
     private DateTime _lastActivity;
-    public IVoiceChannel? CurrentChannel { get; set; }
+    public IVoiceChannel? CurrentChannel { get; private set; }
     private readonly QueueService _queueService;
     private bool _isProcessingQueue;
 
@@ -74,8 +74,8 @@ public class MusicService : IDisposable
     {
         try
         {
-            while (true)
-            { //todo fix connection loop error
+            while (!_queueService.IsIdle())
+            {
                 var track = _queueService.GetNextTrack();
                 if (track == null)
                 {
@@ -84,78 +84,103 @@ public class MusicService : IDisposable
                     continue;
                 }
                 Log.Debug("PlayTrack {0}", track.Title);
-                await PlayTrackAsync(track);
+                try
+                {
+                    await PlayTrackAsync(track);
+                }
+                catch (InvalidOperationException)
+                {
+                    //no voice connection
+                    try
+                    {
+                        if (_queueService.IsIdle()) break;
+                        if (CurrentChannel == null) break;
+                        await JoinChannelAsync(CurrentChannel);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        break;
+                    }
+
+                }
+                catch (OperationCanceledException)
+                {
+                    // canceled on purpose
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Unknown error while playing track");
+                    break;
+                }
             }
         }
         finally
         {
+            _queueService.ClearQueue();
             _isProcessingQueue = false;
         }
     }
 
 
     private async Task PlayTrackAsync(TrackInfo track)
+{
+    if (_audioClient?.ConnectionState != ConnectionState.Connected)
+        throw new InvalidOperationException("No voice connection established!");
+
+    StopCurrentPlayback();
+    _cts = new CancellationTokenSource();
+
+    Log.Information("Playing: {Track}", track.Title);
+    try
     {
-        try
-        {
-            if (_audioClient?.ConnectionState != ConnectionState.Connected)
-                throw new InvalidOperationException("No voice connection established!");
-            
-            Log.Debug("Stoping current playback");
-            StopCurrentPlayback();
-            _cts = new CancellationTokenSource();
-            
-            Log.Information("Playing: {Track}", track.Title);
+        using var pipeYtToFfmpeg =
+            new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);
+        using var pipeYtClient =
+            new AnonymousPipeClientStream(PipeDirection.In, pipeYtToFfmpeg.ClientSafePipeHandle);
 
-            var arguments = BuildProcessArguments(track.Url);
+        using var pipeFfmpegToDiscord =
+            new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable);
+        using var pipeFfmpegOutput =
+            new AnonymousPipeClientStream(PipeDirection.Out, pipeFfmpegToDiscord.ClientSafePipeHandle);
 
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = GetShellCommand(),
-                Arguments = arguments,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
+        // yt-dlp → pipe
+        var ytDlpCmd = Cli.Wrap("yt-dlp")
+            .WithArguments(["-f", "bestaudio", "-o", "-", track.Url])
+            .WithStandardOutputPipe(PipeTarget.ToStream(pipeYtToFfmpeg))
+            .WithStandardErrorPipe(PipeTarget.ToDelegate(line => Log.Warning("[yt-dlp] {Line}", line)))
+            .WithValidation(CommandResultValidation.None);
+        
+        // ffmpeg reads from yt-dlp and writes to pipe
+        var ffmpegCmd = Cli.Wrap("ffmpeg")
+            .WithArguments([
+                "-hide_banner", "-loglevel", "error",
+                "-re", "-i", "pipe:0",
+                "-ac", "2", "-ar", "48000", "-f", "s16le",
+                "-fflags", "+nobuffer", "-flags", "low_delay",
+                "-avioflags", "direct", "-flush_packets", "1",
+                "pipe:1"
+            ])
+            .WithStandardInputPipe(PipeSource.FromStream(pipeYtClient))
+            .WithStandardOutputPipe(PipeTarget.ToStream(pipeFfmpegOutput))
+            .WithStandardErrorPipe(PipeTarget.ToDelegate(line => Log.Warning("[ffmpeg] {Line}", line)))
+            .WithValidation(CommandResultValidation.None);
+        
 
-            _audioProcess = new Process { StartInfo = startInfo };
-            _audioProcess.EnableRaisingEvents = true;
-            _audioProcess.Exited += (sender, args) =>
-            {
-                Log.Information("Audio process finished with code: {ExitCode}", _audioProcess.ExitCode);
-            };
-
-            if (!_audioProcess.Start())
-                throw new InvalidOperationException("Failed to start audio process");
-
-            _ = LogProcessErrors(_audioProcess.StandardError);
-
-            await SendAudioAsync(_audioProcess.StandardOutput.BaseStream, _cts.Token);
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Play track failed");
-        }
+        // Send output from ffmpeg to Discord
+        var sendTask = SendAudioAsync(pipeFfmpegToDiscord, _cts.Token);
+        
+        var ytDlpTask = ytDlpCmd.ExecuteAsync(_cts.Token);
+        var ffmpegTask = ffmpegCmd.ExecuteAsync(_cts.Token);
+        
+        await Task.WhenAll(ytDlpTask, ffmpegTask, sendTask);
     }
-
-    private static async Task LogProcessErrors(StreamReader errorStream)
+    finally
     {
-        try
-        {
-            string error;
-            while ((error = await errorStream.ReadLineAsync()) != null)
-            {
-                if (!string.IsNullOrWhiteSpace(error))
-                    Log.Debug("Process info: {Error}", error);
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Error while processing processes error stream");
-        }
+       await _cts.CancelAsync();
     }
-
+}
+    
     private void StartInactivityTimer()
     {
         _inactivityTimer = new Timer(60000);
@@ -167,26 +192,10 @@ public class MusicService : IDisposable
     private void CheckInactivity(object sender, ElapsedEventArgs e)
     {
         if ((DateTime.Now - _lastActivity).TotalMinutes < 1 || _audioClient == null) return;
-        _ = DisconnectAsync();
+        _ = Disconnect();
         Log.Information("Inactivity timed out");
     }
-
-    private static string BuildProcessArguments(string input)
-    {
-        var ytdlpCmd = $"yt-dlp -f bestaudio -o - \"{input}\"";
-        var ffmpegCmd = $"ffmpeg -hide_banner -loglevel error -re -i pipe:0 " +
-                        $"-ac 2 -ar 48000 -f s16le -fflags +nobuffer -flags low_delay -avioflags direct -flush_packets 1 pipe:1\"";
-
-        var fullCommand = $"{ytdlpCmd} | {ffmpegCmd}";
-
-        return Environment.OSVersion.Platform == PlatformID.Win32NT
-            ? $"/C \"{fullCommand}\""
-            : fullCommand;
-    }
-
-    private static string GetShellCommand() =>
-        Environment.OSVersion.Platform == PlatformID.Win32NT ? "cmd.exe" : "/bin/bash";
-
+    
     private async Task SendAudioAsync(Stream sourceStream, CancellationToken cancellationToken)
     {
         const int blockSize = 3840; // 20 ms blocks for 48kHz
@@ -195,16 +204,21 @@ public class MusicService : IDisposable
 
         try
         {
+            if (_audioClient == null)
+                throw new InvalidOperationException("No audio client available!");
             await using var discordStream = _audioClient.CreatePCMStream(AudioApplication.Mixed);
             while (!cancellationToken.IsCancellationRequested)
             {
-                readBytes = await sourceStream.ReadAsync(buffer, 0, blockSize, cancellationToken);
-
+                readBytes = await sourceStream.ReadAsync(buffer.AsMemory(0, blockSize), cancellationToken);
+                // Log.Debug("Read {Bytes} bytes", readBytes);
                 if (readBytes == 0)
+                {
+                    Log.Debug("EOF reached on sourceStream");
                     break;
-
-                await discordStream.WriteAsync(buffer, 0, readBytes, cancellationToken);
-                _lastActivity = DateTime.Now; // Update the timer
+                }
+                // Log.Debug("Sending {Bytes} bytes", readBytes);
+                await discordStream.WriteAsync(buffer.AsMemory(0,readBytes), cancellationToken);
+                _lastActivity = DateTime.Now;
             }
 
             await discordStream.FlushAsync(cancellationToken);
@@ -222,29 +236,34 @@ public class MusicService : IDisposable
 
     public static async Task<TrackInfo> GetTrackInfoAsync(string input)
     {
-        var arguments = $"-j --no-playlist --default-search \"ytsearch\" \"{input}\"";
-
-        var process = new Process
+        var arguments = new[]
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "yt-dlp",
-                Arguments = arguments,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            }
+            "-j",
+            "--no-playlist",
+            "--default-search", "ytsearch",
+            input
         };
 
-        process.Start();
-        var jsonOutput = await process.StandardOutput.ReadToEndAsync();
-        await process.WaitForExitAsync();
+        // Capture stdout/stderr
+        var stdOutBuffer = new StringBuilder();
+        var stdErrBuffer = new StringBuilder();
 
-        if (process.ExitCode != 0)
+        var result = await Cli.Wrap("yt-dlp")
+            .WithArguments(arguments)
+            .WithStandardOutputPipe(PipeTarget.ToStringBuilder(stdOutBuffer))
+            .WithStandardErrorPipe(PipeTarget.ToStringBuilder(stdErrBuffer))
+            .WithValidation(CommandResultValidation.None)
+            .ExecuteAsync();
+
+        // Check for errors
+        if (result.ExitCode != 0)
+        {
+            Log.Error("yt-dlp error: {Error}", stdErrBuffer.ToString());
             throw new TrackNotFoundException();
+        }
 
-        using var doc = JsonDocument.Parse(jsonOutput);
+        // Parse JSON output
+        using var doc = JsonDocument.Parse(stdOutBuffer.ToString());
         var root = doc.RootElement;
 
         return new TrackInfo
@@ -261,7 +280,6 @@ public class MusicService : IDisposable
     public void StopCurrentPlayback()
     {
         _cts?.Cancel();
-        _audioProcess?.Kill();
     }
 
     public bool IsConnected =>
@@ -284,7 +302,7 @@ public class MusicService : IDisposable
         }
     }
 
-    public async Task DisconnectAsync()
+    public Task Disconnect()
     {
         StopCurrentPlayback();
         _audioClient?.StopAsync().Wait();
@@ -292,6 +310,8 @@ public class MusicService : IDisposable
         CurrentChannel = null;
         _audioClient = null;
         CleanYtDlpFrags();
+        
+        return Task.CompletedTask;
     }
 
     void IDisposable.Dispose()
@@ -299,7 +319,6 @@ public class MusicService : IDisposable
         _cts?.Dispose();
         _inactivityTimer?.Dispose();
         _audioClient?.Dispose();
-        _audioProcess.Dispose();
     }
     
 }

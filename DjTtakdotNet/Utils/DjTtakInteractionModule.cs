@@ -11,15 +11,15 @@ public class DjTtakInteractionModule : InteractionModuleBase<SocketInteractionCo
         DjTtakDjTtakConfig = djTtakConfig;
     }
     
-    protected async Task RespondAndDispose( string text = null, 
-        Embed[] embeds = null, 
+    protected async Task RespondAndDispose( string? text = null, 
+        Embed[]? embeds = null, 
         bool isTTS = false, 
         bool ephemeral = false, 
-        AllowedMentions allowedMentions = null, 
-        RequestOptions options = null, 
-        MessageComponent components = null, 
-        Embed embed = null, 
-        PollProperties poll = null)
+        AllowedMentions? allowedMentions = null, 
+        RequestOptions? options = null, 
+        MessageComponent? components = null, 
+        Embed? embed = null, 
+        PollProperties? poll = null)
     { 
         await RespondAsync(embeds:embeds, isTTS: isTTS, ephemeral: ephemeral, allowedMentions: allowedMentions, options: options, components: components, embed: embed, poll: poll, text: text );
         if (DjTtakDjTtakConfig.DeleteMessageTimeout == 0)

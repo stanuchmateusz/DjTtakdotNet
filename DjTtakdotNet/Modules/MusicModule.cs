@@ -1,6 +1,5 @@
 ﻿using Discord;
 using Discord.Interactions;
-using Discord.WebSocket;
 using DjTtakdotNet.Services;
 using Serilog;
 using DjTtakdotNet.Music;
@@ -25,7 +24,7 @@ public class MusicModule : DjTtakInteractionModule
     [SlashCommand("stop", "Stop current playback and leave that channel")]
     public async Task StopPlayback()
     {
-        await _musicService.DisconnectAsync();
+        await _musicService.Disconnect();
         await RespondAndDispose("Stopped playback and left the channel");
     }
 
@@ -56,7 +55,7 @@ public class MusicModule : DjTtakInteractionModule
             
             if (!_musicService.IsConnected)
             {
-                await _musicService.DisconnectAsync();
+                await _musicService.Disconnect();
                 await _musicService.JoinChannelAsync(voiceChannel);
             }
 
@@ -76,7 +75,7 @@ public class MusicModule : DjTtakInteractionModule
             var response = await FollowupAsync(embed: embed.Build());
             _ = DeleteAfterDelay(response);
         }
-        catch (TrackNotFoundException ex)
+        catch (TrackNotFoundException)
         {
             var followup = await FollowupAsync("❌ Failed to find requested track!");
             _ = DeleteAfterDelay(followup);
@@ -106,7 +105,7 @@ public class MusicModule : DjTtakInteractionModule
         var totalPages = (queue.Length + 9) / MaxTracksPerPage;
         page = Math.Clamp(page, 1, totalPages == 0 ? 1 : totalPages);
 
-        if (queue.Any())
+        if (queue.Length > 0)
         {
             var pagedQueue = queue
                 .Skip((page - 1) * MaxTracksPerPage)
@@ -210,7 +209,7 @@ public class MusicModule : DjTtakInteractionModule
 
     private void OnShutdown(object? sender, EventArgs e)
     {
-        _musicService.DisconnectAsync().GetAwaiter().GetResult();
+        _musicService.Disconnect().GetAwaiter().GetResult();
     }
     
     private async Task DeleteAfterDelay(IUserMessage message)
