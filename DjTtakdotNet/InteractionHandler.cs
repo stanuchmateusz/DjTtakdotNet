@@ -3,51 +3,38 @@
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-using Microsoft.Extensions.Configuration;
 using System;
 using System.Reflection;
 using System.Threading.Tasks;
 
-public class InteractionHandler
+public class InteractionHandler(DiscordSocketClient client, InteractionService handler, IServiceProvider services)
 {
-    private readonly DiscordSocketClient _client;
-    private readonly InteractionService _handler;
-    private readonly IServiceProvider _services;
-
-    public InteractionHandler(DiscordSocketClient client, InteractionService handler, IServiceProvider services)
-    {
-        _client = client;
-        _handler = handler;
-        _services = services;
-    }
-
     public async Task InitializeAsync()
     {
-        _client.Ready += ReadyAsync;
+        client.Ready += ReadyAsync;
         
-        await _handler.AddModulesAsync(Assembly.GetEntryAssembly(), _services);
+        await handler.AddModulesAsync(Assembly.GetEntryAssembly(), services);
         
-        _client.InteractionCreated += HandleInteraction;
-        _handler.InteractionExecuted += HandleInteractionExecute;
+        client.InteractionCreated += HandleInteraction;
+        handler.InteractionExecuted += HandleInteractionExecute;
     }
     
     private async Task ReadyAsync()
     {
-        foreach (var clientGuild in _client.Guilds)
+        foreach (var clientGuild in client.Guilds)
         {
-            await _handler.RegisterCommandsToGuildAsync(clientGuild.Id);
+            await handler.RegisterCommandsToGuildAsync(clientGuild.Id);
         }
-        // await _handler.RegisterCommandsGloballyAsync();
+        await handler.RegisterCommandsGloballyAsync();
     }
 
     private async Task HandleInteraction(SocketInteraction interaction)
     {
         try
         {
-
-            var context = new SocketInteractionContext(_client, interaction);
+            var context = new SocketInteractionContext(client, interaction);
             
-            var result = await _handler.ExecuteCommandAsync(context, _services);
+            var result = await handler.ExecuteCommandAsync(context, services);
                 
             if (!result.IsSuccess)
                 switch (result.Error)

@@ -24,6 +24,7 @@ RUN apt-get update && \
     python3 \
     libopus0 \
     libsodium23 \
+    libsodium-dev \
     curl \
     libglib2.0-0 \
     libx11-6 && \

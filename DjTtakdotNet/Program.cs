@@ -10,9 +10,9 @@ using Serilog.Events;
 
 namespace DjTtakdotNet;
 
-static class Program
+internal static class Program
 {
-    private static DiscordSocketClient Client;
+    private static DiscordSocketClient? _client;
     private static readonly DiscordSocketConfig SocketConfig = new()
     {
         GatewayIntents = GatewayIntents.Guilds 
@@ -26,7 +26,6 @@ static class Program
 
     private static readonly InteractionServiceConfig InteractionServiceConfig = new()
     {
-        //todo not implemented
         LocalizationManager = new ResxLocalizationManager("DjTtakdotNet.Resources.DjTtakLocales", Assembly.GetEntryAssembly(),
             new CultureInfo("en-US"), new CultureInfo("pl"))
     };
@@ -59,25 +58,24 @@ static class Program
                 .AddSingleton<InteractionHandler>()
                 .BuildServiceProvider();
 
-            Client = services.GetRequiredService<DiscordSocketClient>();
+            _client = services.GetRequiredService<DiscordSocketClient>();
 
-            Client.Log += LogAsync;
-            Client.Ready += async () =>
+            _client.Log += LogAsync;
+            _client.Ready += async () =>
             {
-                Log.Information("Bot is ready {0}",Client.CurrentUser.Username);
-                await Client.SetActivityAsync(new Game("Music 🎵"));
+                Log.Information("Bot is ready {0}",_client.CurrentUser.Username);
+                await _client.SetActivityAsync(new Game("Music 🎵"));
             };
             await services.GetRequiredService<InteractionHandler>()
                 .InitializeAsync();
             
-            await Client.LoginAsync(TokenType.Bot, djTtakConfig.Token);
-            await Client.StartAsync();
-
+            await _client.LoginAsync(TokenType.Bot, djTtakConfig.Token);
+            await _client.StartAsync();
             await Task.Delay(Timeout.Infinite);
         }
         finally
         {
-            await Client.StopAsync();
+            await _client?.StopAsync()!;
         }
     }
     

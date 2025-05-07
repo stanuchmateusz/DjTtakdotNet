@@ -22,7 +22,7 @@ public class MusicService : IDisposable
     private bool _isProcessingQueue;
 
 
-    public MusicService( QueueService queueService)
+    public MusicService(QueueService queueService)
     {
         _queueService = queueService;
         _cts = new CancellationTokenSource();
@@ -59,11 +59,11 @@ public class MusicService : IDisposable
     {
         var wasIdle = _queueService.IsIdle();
         _queueService.AddToQueue(track);
-        Log.Debug("Added {0} to then queue",track.Title);
+        Log.Debug("Added {0} to then queue", track.Title);
 
         if (!wasIdle) return false;
         if (_isProcessingQueue) return true;
-        
+
         _isProcessingQueue = true;
         _ = ProcessQueueAsync();
         return true;
@@ -79,7 +79,6 @@ public class MusicService : IDisposable
                 var track = _queueService.GetNextTrack();
                 if (track == null)
                 {
-                    await Task.Delay(1000);
                     if (_queueService.IsIdle()) break;
                     continue;
                 }
@@ -90,18 +89,19 @@ public class MusicService : IDisposable
                 }
                 catch (InvalidOperationException)
                 {
-                    //no voice connection
+                    //no voice connection - retry
                     try
                     {
                         if (_queueService.IsIdle()) break;
                         if (CurrentChannel == null) break;
                         await JoinChannelAsync(CurrentChannel);
+                        await PlayTrackAsync(track);
                     }
                     catch (InvalidOperationException)
                     {
+                        //failed to reconnect - break
                         break;
                     }
-
                 }
                 catch (OperationCanceledException)
                 {
@@ -124,63 +124,61 @@ public class MusicService : IDisposable
 
 
     private async Task PlayTrackAsync(TrackInfo track)
-{
-    if (_audioClient?.ConnectionState != ConnectionState.Connected)
-        throw new InvalidOperationException("No voice connection established!");
-
-    StopCurrentPlayback();
-    _cts = new CancellationTokenSource();
-
-    Log.Information("Playing: {Track}", track.Title);
-    try
     {
-        using var pipeYtToFfmpeg =
-            new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);
-        using var pipeYtClient =
-            new AnonymousPipeClientStream(PipeDirection.In, pipeYtToFfmpeg.ClientSafePipeHandle);
+        if (_audioClient?.ConnectionState != ConnectionState.Connected)
+            throw new InvalidOperationException("No voice connection established!");
 
-        using var pipeFfmpegToDiscord =
-            new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable);
-        using var pipeFfmpegOutput =
-            new AnonymousPipeClientStream(PipeDirection.Out, pipeFfmpegToDiscord.ClientSafePipeHandle);
+        StopCurrentPlayback();
+        _cts = new CancellationTokenSource();
 
-        // yt-dlp → pipe
-        var ytDlpCmd = Cli.Wrap("yt-dlp")
-            .WithArguments(["-f", "bestaudio", "-o", "-", track.Url])
-            .WithStandardOutputPipe(PipeTarget.ToStream(pipeYtToFfmpeg))
-            .WithStandardErrorPipe(PipeTarget.ToDelegate(line => Log.Warning("[yt-dlp] {Line}", line)))
-            .WithValidation(CommandResultValidation.None);
-        
-        // ffmpeg reads from yt-dlp and writes to pipe
-        var ffmpegCmd = Cli.Wrap("ffmpeg")
-            .WithArguments([
-                "-hide_banner", "-loglevel", "error",
-                "-re", "-i", "pipe:0",
-                "-ac", "2", "-ar", "48000", "-f", "s16le",
-                "-fflags", "+nobuffer", "-flags", "low_delay",
-                "-avioflags", "direct", "-flush_packets", "1",
-                "pipe:1"
-            ])
-            .WithStandardInputPipe(PipeSource.FromStream(pipeYtClient))
-            .WithStandardOutputPipe(PipeTarget.ToStream(pipeFfmpegOutput))
-            .WithStandardErrorPipe(PipeTarget.ToDelegate(line => Log.Warning("[ffmpeg] {Line}", line)))
-            .WithValidation(CommandResultValidation.None);
-        
+        Log.Information("Playing: {Track}", track.Title);
+        try
+        {
+            await using var pipeYtToFfmpeg =
+                new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);
+            await using var pipeYtClient =
+                new AnonymousPipeClientStream(PipeDirection.In, pipeYtToFfmpeg.ClientSafePipeHandle);
 
-        // Send output from ffmpeg to Discord
-        var sendTask = SendAudioAsync(pipeFfmpegToDiscord, _cts.Token);
-        
-        var ytDlpTask = ytDlpCmd.ExecuteAsync(_cts.Token);
-        var ffmpegTask = ffmpegCmd.ExecuteAsync(_cts.Token);
-        
-        await Task.WhenAll(ytDlpTask, ffmpegTask, sendTask);
+            await using var pipeFfmpegToDiscord =
+                new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable);
+            await using var pipeFfmpegOutput =
+                new AnonymousPipeClientStream(PipeDirection.Out, pipeFfmpegToDiscord.ClientSafePipeHandle);
+
+            // yt-dlp → pipe
+            var ytDlpCmd = Cli.Wrap("yt-dlp")
+                .WithArguments(["-f", "bestaudio", "-o", "-", track.Url])
+                .WithStandardOutputPipe(PipeTarget.ToStream(pipeYtToFfmpeg))
+                .WithStandardErrorPipe(PipeTarget.ToDelegate(line => Log.Debug("[yt-dlp] {Line}", line)))
+                .WithValidation(CommandResultValidation.None);
+
+            // ffmpeg reads from yt-dlp and writes to pipe
+            var ffmpegCmd = Cli.Wrap("ffmpeg")
+                .WithArguments([
+                    "-hide_banner", "-loglevel", "error",
+                    "-re", "-i", "pipe:0",
+                    "-ac", "2", "-ar", "48000", "-f", "s16le",
+                    "-fflags", "+nobuffer", "-flags", "low_delay",
+                    "-avioflags", "direct", "-flush_packets", "1",
+                    "pipe:1"
+                ])
+                .WithStandardInputPipe(PipeSource.FromStream(pipeYtClient))
+                .WithStandardOutputPipe(PipeTarget.ToStream(pipeFfmpegOutput))
+                .WithStandardErrorPipe(PipeTarget.ToDelegate(line => Log.Debug("[ffmpeg] {Line}", line)))
+                .WithValidation(CommandResultValidation.None);
+            
+            // Send output from ffmpeg to Discord
+            var sendTask = SendAudioAsync(pipeFfmpegToDiscord, _cts.Token);
+            var ytDlpTask = ytDlpCmd.ExecuteAsync(_cts.Token);
+            var ffmpegTask = ffmpegCmd.ExecuteAsync(_cts.Token);
+
+            await Task.WhenAll(ytDlpTask, ffmpegTask, sendTask);
+        }
+        finally
+        {
+            await _cts.CancelAsync();
+        }
     }
-    finally
-    {
-       await _cts.CancelAsync();
-    }
-}
-    
+
     private void StartInactivityTimer()
     {
         _inactivityTimer = new Timer(60000);
@@ -195,7 +193,7 @@ public class MusicService : IDisposable
         _ = Disconnect();
         Log.Information("Inactivity timed out");
     }
-    
+
     private async Task SendAudioAsync(Stream sourceStream, CancellationToken cancellationToken)
     {
         const int blockSize = 3840; // 20 ms blocks for 48kHz
@@ -217,7 +215,7 @@ public class MusicService : IDisposable
                     break;
                 }
                 // Log.Debug("Sending {Bytes} bytes", readBytes);
-                await discordStream.WriteAsync(buffer.AsMemory(0,readBytes), cancellationToken);
+                await discordStream.WriteAsync(buffer.AsMemory(0, readBytes), cancellationToken);
                 _lastActivity = DateTime.Now;
             }
 
@@ -243,8 +241,7 @@ public class MusicService : IDisposable
             "--default-search", "ytsearch",
             input
         };
-
-        // Capture stdout/stderr
+        
         var stdOutBuffer = new StringBuilder();
         var stdErrBuffer = new StringBuilder();
 
@@ -254,15 +251,13 @@ public class MusicService : IDisposable
             .WithStandardErrorPipe(PipeTarget.ToStringBuilder(stdErrBuffer))
             .WithValidation(CommandResultValidation.None)
             .ExecuteAsync();
-
-        // Check for errors
+        
         if (result.ExitCode != 0)
         {
             Log.Error("yt-dlp error: {Error}", stdErrBuffer.ToString());
             throw new TrackNotFoundException();
         }
-
-        // Parse JSON output
+        
         using var doc = JsonDocument.Parse(stdOutBuffer.ToString());
         var root = doc.RootElement;
 
@@ -310,7 +305,7 @@ public class MusicService : IDisposable
         CurrentChannel = null;
         _audioClient = null;
         CleanYtDlpFrags();
-        
+
         return Task.CompletedTask;
     }
 
@@ -320,7 +315,6 @@ public class MusicService : IDisposable
         _inactivityTimer?.Dispose();
         _audioClient?.Dispose();
     }
-    
 }
 
 public class TrackNotFoundException() : Exception("Track not found");

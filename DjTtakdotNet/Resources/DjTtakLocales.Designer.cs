@@ -21,14 +21,14 @@ namespace DiscordNetTestBot.Properties {
     [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "4.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
-    internal class DjTtakLocales {
+    internal class DjTtakLocales_pl {
         
         private static global::System.Resources.ResourceManager resourceMan;
         
         private static global::System.Globalization.CultureInfo resourceCulture;
         
         [global::System.Diagnostics.CodeAnalysis.SuppressMessageAttribute("Microsoft.Performance", "CA1811:AvoidUncalledPrivateCode")]
-        internal DjTtakLocales() {
+        internal DjTtakLocales_pl() {
         }
         
         /// <summary>
@@ -38,7 +38,7 @@ namespace DiscordNetTestBot.Properties {
         internal static global::System.Resources.ResourceManager ResourceManager {
             get {
                 if (object.ReferenceEquals(resourceMan, null)) {
-                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("DjTtakdotNet.Resources.DjTtakLocales", typeof(DjTtakLocales).Assembly);
+                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("DjTtakdotNet.Resources.DjTtakLocales.pl", typeof(DjTtakLocales_pl).Assembly);
                     resourceMan = temp;
                 }
                 return resourceMan;
@@ -60,7 +60,79 @@ namespace DiscordNetTestBot.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to play.
+        ///   Looks up a localized string similar to wyczyść.
+        /// </summary>
+        internal static string clear {
+            get {
+                return ResourceManager.GetString("clear", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Czyści kolejkę.
+        /// </summary>
+        internal static string clear_description {
+            get {
+                return ResourceManager.GetString("clear.description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to pomoc.
+        /// </summary>
+        internal static string help {
+            get {
+                return ResourceManager.GetString("help", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Wyświetla informacje z pomocą.
+        /// </summary>
+        internal static string help_description {
+            get {
+                return ResourceManager.GetString("help.description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to pętla.
+        /// </summary>
+        internal static string loop {
+            get {
+                return ResourceManager.GetString("loop", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Zmienie tryb pętli na kolejce.
+        /// </summary>
+        internal static string loop_description {
+            get {
+                return ResourceManager.GetString("loop.description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to co_teraz.
+        /// </summary>
+        internal static string nowplaying {
+            get {
+                return ResourceManager.GetString("nowplaying", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Wyświetla informacje o obecnie otwarzanym utworze.
+        /// </summary>
+        internal static string nowplaying_description {
+            get {
+                return ResourceManager.GetString("nowplaying.description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to graj.
         /// </summary>
         internal static string play {
             get {
@@ -69,11 +141,83 @@ namespace DiscordNetTestBot.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Plays from provided url or searches youtube and plays best result..
+        ///   Looks up a localized string similar to Gra z podanego url lub wyszukuje daną frazę na youtube, a następnie ją odtwarza..
         /// </summary>
         internal static string play_description {
             get {
                 return ResourceManager.GetString("play.description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to kolejka.
+        /// </summary>
+        internal static string queue {
+            get {
+                return ResourceManager.GetString("queue", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Wyświetla kolejkę.
+        /// </summary>
+        internal static string queue_description {
+            get {
+                return ResourceManager.GetString("queue.description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to usuń.
+        /// </summary>
+        internal static string remove {
+            get {
+                return ResourceManager.GetString("remove", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Usuwa utwór z kolejki.
+        /// </summary>
+        internal static string remove_description {
+            get {
+                return ResourceManager.GetString("remove.description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to pomiń.
+        /// </summary>
+        internal static string skip {
+            get {
+                return ResourceManager.GetString("skip", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Pomija obecny utwór.
+        /// </summary>
+        internal static string skip_description {
+            get {
+                return ResourceManager.GetString("skip.description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to stop.
+        /// </summary>
+        internal static string stop {
+            get {
+                return ResourceManager.GetString("stop", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Przestaje grać i opuszcza kanał głosowy.
+        /// </summary>
+        internal static string stop_description {
+            get {
+                return ResourceManager.GetString("stop.description", resourceCulture);
             }
         }
     }

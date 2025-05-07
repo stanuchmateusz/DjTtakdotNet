@@ -123,4 +123,52 @@
   <data name="play.description" xml:space="preserve">
     <value>Plays from provided url or searches youtube and plays best result.</value>
   </data>
+  <data name="help" xml:space="preserve">
+    <value>help</value>
+  </data>
+  <data name="help.description" xml:space="preserve">
+    <value>Displays help</value>
+  </data>
+  <data name="stop.description" xml:space="preserve">
+    <value>Stops current playback and leaves voice channel</value>
+  </data>
+  <data name="stop" xml:space="preserve">
+    <value>stop</value>
+  </data>
+  <data name="queue" xml:space="preserve">
+    <value>queue</value>
+  </data>
+  <data name="queue.description" xml:space="preserve">
+    <value>Shows the queue</value>
+  </data>
+  <data name="nowplaying" xml:space="preserve">
+    <value>nowplaying</value>
+  </data>
+  <data name="nowplaying.description" xml:space="preserve">
+    <value>Shows info about track that's currently playing</value>
+  </data>
+  <data name="remove" xml:space="preserve">
+    <value>remove</value>
+  </data>
+  <data name="remove.description" xml:space="preserve">
+    <value>Removes track from the queue</value>
+  </data>
+  <data name="skip" xml:space="preserve">
+    <value>skip</value>
+  </data>
+  <data name="skip.description" xml:space="preserve">
+    <value>Skips current track</value>
+  </data>
+  <data name="loop" xml:space="preserve">
+    <value>loop</value>
+  </data>
+  <data name="loop.description" xml:space="preserve">
+    <value>Changes the loop mode of the queue</value>
+  </data>
+  <data name="clear" xml:space="preserve">
+    <value>clear</value>
+  </data>
+  <data name="clear.description" xml:space="preserve">
+    <value>Clears the queue</value>
+  </data>
 </root>

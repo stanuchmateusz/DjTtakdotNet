@@ -21,7 +21,8 @@ public class MusicModule : DjTtakInteractionModule
     }
     
    
-    [SlashCommand("stop", "Stop current playback and leave that channel")]
+    [SlashCommand("stop", "Stops current playback and leaves voice channel")]
+    [RequireContext(ContextType.Guild)]
     public async Task StopPlayback()
     {
         await _musicService.Disconnect();
@@ -29,6 +30,7 @@ public class MusicModule : DjTtakInteractionModule
     }
 
     [SlashCommand("play", "Play from URL or serach and play from YouTube")]
+    [RequireContext(ContextType.Guild)]
     public async Task PlayCommand(string query)
     {
         //todo add support for youtube playlists
@@ -88,7 +90,8 @@ public class MusicModule : DjTtakInteractionModule
         }
     }
 
-    [SlashCommand("queue", "Print the queue")]
+    [SlashCommand("queue", "Shows the queue")]
+    [RequireContext(ContextType.Guild)]
     public async Task ShowQueue(int page = 1)
     {
         var queue = _queueService.GetQueue().ToArray();
@@ -135,7 +138,8 @@ public class MusicModule : DjTtakInteractionModule
         await RespondAndDispose(embed: embed.Build());
     }
 
-    [SlashCommand("nowplaying", "Show info about currently playing")]
+    [SlashCommand("nowplaying", "Shows info about track that's currently playing")]
+    [RequireContext(ContextType.Guild)]
     public async Task NowPlaying()
     {
         var track = _queueService.CurrentTrack;
@@ -152,7 +156,8 @@ public class MusicModule : DjTtakInteractionModule
         await RespondAndDispose(embed: embed.Build());
     }
 
-    [SlashCommand("remove", "Remove track from queue")]
+    [SlashCommand("remove", "Removes track from the queue")]
+    [RequireContext(ContextType.Guild)]
     public async Task RemoveTrack(string trackId)
     {   
         if (!int.TryParse(trackId, out var id))
@@ -164,14 +169,16 @@ public class MusicModule : DjTtakInteractionModule
         await RespondAndDispose(removed ? "Track removed from the queue!" : "Could not remove track!");
     }
 
-    [SlashCommand("skip", "Skip current track")]
+    [SlashCommand("skip", "Skips current track")]
+    [RequireContext(ContextType.Guild)]
     public async Task SkipTrack()
     {
         _musicService.StopCurrentPlayback();
         await RespondAndDispose("Skipping current track");
     }
 
-    [SlashCommand("loop", "Change the loop mode")]
+    [SlashCommand("loop", "Changes the loop mode of the queue")]
+    [RequireContext(ContextType.Guild)]
     public async Task ToggleLoop(QueueService.LoopMode mode)
     {
         var newMode = _queueService.CurrentLoopMode = mode;
@@ -187,6 +194,7 @@ public class MusicModule : DjTtakInteractionModule
     }
 
     [SlashCommand("clear", "Clears the queue")]
+    [RequireContext(ContextType.Guild)]
     public async Task ClearTrack()
     {
         _queueService.ClearQueue();

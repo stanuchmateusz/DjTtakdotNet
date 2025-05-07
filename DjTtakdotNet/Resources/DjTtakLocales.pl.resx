@@ -123,4 +123,52 @@
   <data name="play.description" xml:space="preserve">
     <value>Gra z podanego url lub wyszukuje daną frazę na youtube, a następnie ją odtwarza.</value>
   </data>
+  <data name="help" xml:space="preserve">
+    <value>pomoc</value>
+  </data>
+  <data name="help.description" xml:space="preserve">
+    <value>Wyświetla informacje z pomocą</value>
+  </data>
+  <data name="stop.description" xml:space="preserve">
+    <value>Przestaje grać i opuszcza kanał głosowy</value>
+  </data>
+  <data name="queue" xml:space="preserve">
+    <value>kolejka</value>
+  </data>
+  <data name="queue.description" xml:space="preserve">
+    <value>Wyświetla kolejkę</value>
+  </data>
+  <data name="stop" xml:space="preserve">
+    <value>stop</value>
+  </data>
+  <data name="nowplaying" xml:space="preserve">
+    <value>co_teraz</value>
+  </data>
+  <data name="nowplaying.description" xml:space="preserve">
+    <value>Wyświetla informacje o obecnie otwarzanym utworze</value>
+  </data>
+  <data name="remove" xml:space="preserve">
+    <value>usuń</value>
+  </data>
+  <data name="remove.description" xml:space="preserve">
+    <value>Usuwa utwór z kolejki</value>
+  </data>
+  <data name="skip" xml:space="preserve">
+    <value>pomiń</value>
+  </data>
+  <data name="skip.description" xml:space="preserve">
+    <value>Pomija obecny utwór</value>
+  </data>
+  <data name="loop" xml:space="preserve">
+    <value>pętla</value>
+  </data>
+  <data name="loop.description" xml:space="preserve">
+    <value>Zmienie tryb pętli na kolejce</value>
+  </data>
+  <data name="clear" xml:space="preserve">
+    <value>wyczyść</value>
+  </data>
+  <data name="clear.description" xml:space="preserve">
+    <value>Czyści kolejkę</value>
+  </data>
 </root>

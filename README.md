@@ -17,6 +17,6 @@ Run with
 
 ### Docker
 
-todo
+Configure appsettings.json and from same directory run ``docker-compose up --build`` 
 
 
