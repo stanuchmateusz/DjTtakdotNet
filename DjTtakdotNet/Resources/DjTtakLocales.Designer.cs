@@ -114,6 +114,24 @@ namespace DiscordNetTestBot.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to następny.
+        /// </summary>
+        internal static string next {
+            get {
+                return ResourceManager.GetString("next", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Przechodzi do następnego utworu.
+        /// </summary>
+        internal static string next_description {
+            get {
+                return ResourceManager.GetString("next.description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to co_teraz.
         /// </summary>
         internal static string nowplaying {

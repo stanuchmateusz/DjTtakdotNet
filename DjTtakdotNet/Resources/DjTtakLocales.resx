@@ -171,4 +171,10 @@
   <data name="clear.description" xml:space="preserve">
     <value>Clears the queue</value>
   </data>
+  <data name="next" xml:space="preserve">
+    <value>next</value>
+  </data>
+  <data name="next.description" xml:space="preserve">
+    <value>Goes to the next track</value>
+  </data>
 </root>

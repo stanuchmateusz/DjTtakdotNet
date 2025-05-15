@@ -171,4 +171,10 @@
   <data name="clear.description" xml:space="preserve">
     <value>Czyści kolejkę</value>
   </data>
+  <data name="next" xml:space="preserve">
+    <value>następny</value>
+  </data>
+  <data name="next.description" xml:space="preserve">
+    <value>Przechodzi do następnego utworu</value>
+  </data>
 </root>
