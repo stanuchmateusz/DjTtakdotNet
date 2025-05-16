@@ -1,10 +1,10 @@
-﻿using Discord.Audio;
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
 using System.Timers;
 using CliWrap;
 using Discord;
+using Discord.Audio;
 using DjTtakdotNet.Music;
 using DjTtakdotNet.Utils;
 using Serilog;
@@ -14,16 +14,15 @@ namespace DjTtakdotNet.Services;
 
 public class MusicService : IDisposable
 {
-    private bool _isProcessingQueue;
-    private Timer _inactivityTimer;
-    private DateTime _lastActivity;
+    private readonly IDjTtakConfig _config;
+    private readonly QueueService _queueService;
+    private bool _advancingToNextGracefully;
     private IAudioClient? _audioClient;
-    public IVoiceChannel? CurrentChannel { get; private set; }
+    private Timer _inactivityTimer;
+    private bool _isProcessingQueue;
+    private DateTime _lastActivity;
     private CancellationTokenSource _playbackCts;
     private CancellationTokenSource _serviceProcessingCts;
-    private readonly QueueService _queueService;
-    private readonly IDjTtakConfig _config;
-    private bool _advancingToNextGracefully = false;
 
     public MusicService(QueueService queueService, IDjTtakConfig config)
     {
@@ -33,6 +32,23 @@ public class MusicService : IDisposable
         _serviceProcessingCts = new CancellationTokenSource();
     }
 
+    public IVoiceChannel? CurrentChannel { get; private set; }
+
+    public bool IsConnected =>
+        _audioClient is { ConnectionState: ConnectionState.Connected };
+
+    void IDisposable.Dispose()
+    {
+        Log.Debug("MusicService Dispose executing.");
+        _serviceProcessingCts?.Cancel();
+        _serviceProcessingCts?.Dispose();
+        _playbackCts?.Cancel();
+        _playbackCts?.Dispose();
+        _inactivityTimer?.Dispose();
+        _audioClient?.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
     public async Task JoinChannelAsync(IVoiceChannel channel)
     {
         if (_audioClient?.ConnectionState == ConnectionState.Connected && CurrentChannel?.Id == channel.Id)
@@ -40,26 +56,30 @@ public class MusicService : IDisposable
             Log.Debug("Already connected to {ChannelName}", channel.Name);
             return;
         }
+
         if (_audioClient != null && CurrentChannel?.Id != channel.Id)
         {
-             Log.Information("DJ is on a different channel. Disconnecting from old one first.");
-             await DisconnectAsyncInternal(); 
+            Log.Information("DJ is on a different channel. Disconnecting from old one first.");
+            await DisconnectAsyncInternal();
         }
-        else if (_audioClient != null) 
+        else if (_audioClient != null)
         {
             await DisconnectAsyncInternal();
         }
-        
+
         try
         {
             Log.Information("Joining channel {ChannelName}", channel.Name);
             var timeoutTask = Task.Delay(TimeSpan.FromSeconds(10));
-            var connectTask = channel.ConnectAsync(selfDeaf: false);
+            var connectTask = channel.ConnectAsync(false);
 
             var completedTask = await Task.WhenAny(connectTask, timeoutTask);
             if (completedTask == timeoutTask)
             {
-                await connectTask.ContinueWith(t => { if (t.IsFaulted) Log.Error(t.Exception, "Connection task faulted after timeout."); });
+                await connectTask.ContinueWith(t =>
+                {
+                    if (t.IsFaulted) Log.Error(t.Exception, "Connection task faulted after timeout.");
+                });
                 throw new TimeoutException("Voice channel connection timed out!");
             }
 
@@ -86,11 +106,8 @@ public class MusicService : IDisposable
         _queueService.AddToQueue(track);
         Log.Debug("Added {TrackTitle} to the queue", track.Title);
 
-        if (_isProcessingQueue)
-        {
-            return wasEffectivelyIdle;
-        }
-        
+        if (_isProcessingQueue) return wasEffectivelyIdle;
+
         _serviceProcessingCts = new CancellationTokenSource();
         _ = ProcessQueueAsync(_serviceProcessingCts.Token);
         return true;
@@ -104,6 +121,7 @@ public class MusicService : IDisposable
             Log.Warning("ProcessQueueAsync called while already processing.");
             return;
         }
+
         _isProcessingQueue = true;
         Log.Information("Music queue processing started.");
 
@@ -115,48 +133,56 @@ public class MusicService : IDisposable
                 if (track == null)
                 {
                     Log.Debug("Queue is empty or not looping single, pausing processing until new tracks are added.");
-                    
+
                     if (_queueService.IsIdle()) break;
-                    await Task.Delay(100, serviceToken); 
+                    await Task.Delay(100, serviceToken);
                     continue;
                 }
 
                 Log.Debug("Processing track {TrackTitle} from queue", track.Title);
                 try
                 {
-                    if (CurrentChannel == null && _audioClient != null) 
+                    if (CurrentChannel == null && _audioClient != null)
                     {
                         Log.Warning("CurrentChannel is null but AudioClient exists. Attempting to disconnect client.");
                         await _audioClient.StopAsync();
                         _audioClient.Dispose();
                         _audioClient = null;
                     }
-                    
+
                     if (_audioClient == null || _audioClient.ConnectionState != ConnectionState.Connected)
                     {
-                        Log.Information("No voice connection or not connected. Attempting to join channel for track: {TrackTitle}", track.Title);
+                        Log.Information(
+                            "No voice connection or not connected. Attempting to join channel for track: {TrackTitle}",
+                            track.Title);
                         if (CurrentChannel == null)
                         {
-                            Log.Error("Cannot play track {TrackTitle}: CurrentChannel is not set. Skipping track.", track.Title);
-                            _queueService.SkipCurrentTrack(); 
+                            Log.Error("Cannot play track {TrackTitle}: CurrentChannel is not set. Skipping track.",
+                                track.Title);
+                            _queueService.SkipCurrentTrack();
                             continue;
                         }
-                        await JoinChannelAsync(CurrentChannel); 
+
+                        await JoinChannelAsync(CurrentChannel);
                     }
-                    
-                    _playbackCts = new CancellationTokenSource(); 
+
+                    _playbackCts = new CancellationTokenSource();
                     await PlayTrackAsync(track, _playbackCts.Token);
                     Log.Information("Track finished");
-                    _queueService.TrackFinishedProcessing(); 
+                    _queueService.TrackFinishedProcessing();
                 }
-                catch (InvalidOperationException ex) when (ex.Message.Contains("No voice connection") || ex.Message.Contains("Not connected"))
+                catch (InvalidOperationException ex) when (ex.Message.Contains("No voice connection") ||
+                                                           ex.Message.Contains("Not connected"))
                 {
-                    Log.Warning(ex, "No voice connection while trying to play {TrackTitle}. Will attempt to rejoin or skip.", track.Title);
+                    Log.Warning(ex,
+                        "No voice connection while trying to play {TrackTitle}. Will attempt to rejoin or skip.",
+                        track.Title);
                     if (serviceToken.IsCancellationRequested) break;
 
                     if (CurrentChannel != null)
                     {
-                        Log.Information("Attempting to rejoin channel {ChannelName} for {TrackTitle}", CurrentChannel.Name, track.Title);
+                        Log.Information("Attempting to rejoin channel {ChannelName} for {TrackTitle}",
+                            CurrentChannel.Name, track.Title);
                         try
                         {
                             await JoinChannelAsync(CurrentChannel);
@@ -164,24 +190,29 @@ public class MusicService : IDisposable
                             // because `SetNextTrackAsCurrent` will return it again (as it wasn't processed).
                             // No need to call PlayTrackAsync here directly.
                             Log.Information("Rejoined channel, will retry track {TrackTitle}", track.Title);
-                            continue; 
+                            continue;
                         }
                         catch (Exception rejoinEx)
                         {
-                            Log.Error(rejoinEx, "Failed to rejoin channel for track {TrackTitle}. Skipping track.", track.Title);
+                            Log.Error(rejoinEx, "Failed to rejoin channel for track {TrackTitle}. Skipping track.",
+                                track.Title);
                             _queueService.SkipCurrentTrack(); // Give up on this track
                             continue;
                         }
                     }
-                    Log.Error("Cannot play track {TrackTitle}: CurrentChannel is not set after connection loss. Skipping track.", track.Title);
-                    _queueService.SkipCurrentTrack(); 
+
+                    Log.Error(
+                        "Cannot play track {TrackTitle}: CurrentChannel is not set after connection loss. Skipping track.",
+                        track.Title);
+                    _queueService.SkipCurrentTrack();
                 }
                 catch (OperationCanceledException) // _playbackCts cancellation
                 {
                     if (serviceToken.IsCancellationRequested)
                     {
-                        Log.Information("Service token cancelled, playback of {TrackTitle} also cancelled.", track?.Title ?? "Unknown Track");
-                        break; 
+                        Log.Information("Service token cancelled, playback of {TrackTitle} also cancelled.",
+                            track?.Title ?? "Unknown Track");
+                        break;
                     }
 
                     if (track != null)
@@ -189,8 +220,9 @@ public class MusicService : IDisposable
                         Log.Information("Playback of {TrackTitle} was cancelled by user request.", track.Title);
                         if (_advancingToNextGracefully)
                         {
-                            Log.Information("Processing as 'next' command: {TrackTitle} will be treated as finished.", track.Title);
-                            _queueService.TrackFinishedProcessing(); 
+                            Log.Information("Processing as 'next' command: {TrackTitle} will be treated as finished.",
+                                track.Title);
+                            _queueService.TrackFinishedProcessing();
                         }
                         else
                         {
@@ -200,15 +232,18 @@ public class MusicService : IDisposable
                     }
                     else
                     {
-                        Log.Warning("Playback cancelled, but current track was null. Advancing queue pointer if possible (defaulting to skip).");
-                        _queueService.SkipCurrentTrack(); 
+                        Log.Warning(
+                            "Playback cancelled, but current track was null. Advancing queue pointer if possible (defaulting to skip).");
+                        _queueService.SkipCurrentTrack();
                     }
-                    _advancingToNextGracefully = false; 
+
+                    _advancingToNextGracefully = false;
                 }
                 catch (TrackNotFoundException ex)
                 {
-                     Log.Error(ex, "TrackNotFoundException for {TrackTitle} during PlayTrackAsync. Skipping.", track.Title);
-                    _queueService.SkipCurrentTrack(); 
+                    Log.Error(ex, "TrackNotFoundException for {TrackTitle} during PlayTrackAsync. Skipping.",
+                        track.Title);
+                    _queueService.SkipCurrentTrack();
                 }
                 catch (Exception ex)
                 {
@@ -237,7 +272,7 @@ public class MusicService : IDisposable
     {
         if (_audioClient?.ConnectionState != ConnectionState.Connected)
             throw new InvalidOperationException("No voice connection established!");
-        
+
         Log.Information("Playing: {TrackTitle}", track.Title);
         try
         {
@@ -276,7 +311,6 @@ public class MusicService : IDisposable
             ffmpegCmd.ExecuteAsync(playbackToken);
 
             await ytDlpTask;
-            
             Log.Debug("Finished playing {TrackTitle}", track.Title);
         }
         catch (OperationCanceledException) when (playbackToken.IsCancellationRequested)
@@ -293,7 +327,7 @@ public class MusicService : IDisposable
 
     private void StartInactivityTimer()
     {
-        _inactivityTimer?.Dispose(); 
+        _inactivityTimer?.Dispose();
         _inactivityTimer = new Timer(_config.InactivityTimeoutMilliseconds);
         _inactivityTimer.Elapsed += CheckInactivity;
         _inactivityTimer.AutoReset = true;
@@ -318,14 +352,14 @@ public class MusicService : IDisposable
             return;
         }
 
-        if (!((DateTime.Now - _lastActivity).TotalMinutes >= 1) || _audioClient == null) return;
+        if ((DateTime.Now - _lastActivity).TotalMinutes < 1 || _audioClient == null) return;
         Log.Information("Inactivity timeout reached. Disconnecting.");
         _ = DisconnectAsync();
     }
 
     private async Task SendAudioAsync(Stream sourceStream, CancellationToken cancellationToken)
     {
-        const int blockSize = 3840; 
+        const int blockSize = 3840;
         var buffer = new byte[blockSize];
         int readBytes;
 
@@ -334,7 +368,7 @@ public class MusicService : IDisposable
             if (_audioClient == null)
                 throw new InvalidOperationException("No audio client available for sending audio!");
             if (_audioClient.ConnectionState != ConnectionState.Connected)
-                 throw new InvalidOperationException("Audio client not connected for sending audio!");
+                throw new InvalidOperationException("Audio client not connected for sending audio!");
 
             await using var discordStream = _audioClient.CreatePCMStream(AudioApplication.Mixed);
             while (!cancellationToken.IsCancellationRequested)
@@ -345,19 +379,24 @@ public class MusicService : IDisposable
                     Log.Debug("EOF reached on sourceStream for SendAudioAsync.");
                     break;
                 }
+
                 await discordStream.WriteAsync(buffer.AsMemory(0, readBytes), cancellationToken);
                 _lastActivity = DateTime.Now;
             }
+
             await discordStream.FlushAsync(cancellationToken);
             Log.Debug("SendAudioAsync finished flushing stream or was cancelled.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             Log.Information("SendAudioAsync was cancelled.");
-            throw; 
+            throw;
         }
         catch (Exception ex)
         {
+            if (ex is ObjectDisposedException)
+                return;
+
             Log.Error(ex, "Exception in SendAudioAsync.");
             throw;
         }
@@ -372,7 +411,7 @@ public class MusicService : IDisposable
             "--default-search", "ytsearch",
             input
         };
-        
+
         var stdOutBuffer = new StringBuilder();
         var stdErrBuffer = new StringBuilder();
 
@@ -380,16 +419,17 @@ public class MusicService : IDisposable
             .WithArguments(arguments)
             .WithStandardOutputPipe(PipeTarget.ToStringBuilder(stdOutBuffer))
             .WithStandardErrorPipe(PipeTarget.ToStringBuilder(stdErrBuffer))
-            .WithValidation(CommandResultValidation.None) 
+            .WithValidation(CommandResultValidation.None)
             .ExecuteAsync();
-        
+
         if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(stdOutBuffer.ToString()))
         {
             var errorMessage = stdErrBuffer.ToString();
-            Log.Error("yt-dlp error (Exit Code: {ExitCode}): {Error}. StdOut: {StdOut}", result.ExitCode, errorMessage, stdOutBuffer.ToString());
+            Log.Error("yt-dlp error (Exit Code: {ExitCode}): {Error}. StdOut: {StdOut}", result.ExitCode, errorMessage,
+                stdOutBuffer.ToString());
             throw new TrackNotFoundException($"Failed to get track info. yt-dlp: {errorMessage}");
         }
-        
+
         try
         {
             using var doc = JsonDocument.Parse(stdOutBuffer.ToString());
@@ -399,8 +439,12 @@ public class MusicService : IDisposable
             {
                 Title = root.GetProperty("title").GetString()!,
                 Url = root.GetProperty("webpage_url").GetString()!,
-                Thumbnail = root.TryGetProperty("thumbnail", out var thumb) ? thumb.GetString()! : "https://via.placeholder.com/150",
-                Duration = root.TryGetProperty("duration", out var dur) && dur.ValueKind == JsonValueKind.Number ? TimeSpan.FromSeconds(dur.GetDouble()) : TimeSpan.Zero,
+                Thumbnail = root.TryGetProperty("thumbnail", out var thumb)
+                    ? thumb.GetString()!
+                    : "https://via.placeholder.com/150",
+                Duration = root.TryGetProperty("duration", out var dur) && dur.ValueKind == JsonValueKind.Number
+                    ? TimeSpan.FromSeconds(dur.GetDouble())
+                    : TimeSpan.Zero,
                 Uploader = root.TryGetProperty("uploader", out var upl) ? upl.GetString()! : "Unknown",
                 Query = input
             };
@@ -424,9 +468,6 @@ public class MusicService : IDisposable
         _playbackCts?.Cancel();
     }
 
-    public bool IsConnected =>
-        _audioClient is { ConnectionState: ConnectionState.Connected };
-
     private static void CleanYtDlpFrags()
     {
         try
@@ -443,16 +484,13 @@ public class MusicService : IDisposable
             Log.Error(e, "Error while cleaning up yt-dlp fragments");
         }
     }
-    
+
     private async Task DisconnectAsyncInternal(bool stopProcessing = false)
     {
         Log.Information("Internal disconnect called. StopProcessing: {StopProcessing}", stopProcessing);
         StopCurrentPlayback();
 
-        if (stopProcessing)
-        {
-            await _serviceProcessingCts.CancelAsync(); 
-        }
+        if (stopProcessing) await _serviceProcessingCts.CancelAsync();
 
         if (_audioClient != null)
         {
@@ -464,38 +502,36 @@ public class MusicService : IDisposable
             {
                 Log.Warning(ex, "Exception during AudioClient.StopAsync()");
             }
+
             _audioClient.Dispose();
             _audioClient = null;
         }
+
         CurrentChannel = null;
         CleanYtDlpFrags();
         StopInactivityTimer();
         Log.Information("Internal disconnect finished.");
     }
-    
+
     public async Task DisconnectAsync()
     {
         Log.Information("DisconnectAsync called. Stopping queue processing and disconnecting from voice.");
-        await DisconnectAsyncInternal(stopProcessing: true);
+        await DisconnectAsyncInternal(true);
         _queueService.ClearQueue();
-    }
-
-    void IDisposable.Dispose()
-    {
-        Log.Debug("MusicService Dispose executing.");
-        _serviceProcessingCts?.Cancel();
-        _serviceProcessingCts?.Dispose();
-        _playbackCts?.Cancel();
-        _playbackCts?.Dispose();
-        _inactivityTimer?.Dispose();
-        _audioClient?.Dispose();
-        GC.SuppressFinalize(this);
     }
 }
 
 public class TrackNotFoundException : Exception
 {
-    public TrackNotFoundException() : base("Track not found") { }
-    public TrackNotFoundException(string message) : base(message) { }
-    public TrackNotFoundException(string message, Exception inner) : base(message, inner) { }
+    public TrackNotFoundException() : base("Track not found")
+    {
+    }
+
+    public TrackNotFoundException(string message) : base(message)
+    {
+    }
+
+    public TrackNotFoundException(string message, Exception inner) : base(message, inner)
+    {
+    }
 }

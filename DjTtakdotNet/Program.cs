@@ -3,6 +3,7 @@ using System.Reflection;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using DjTtakdotNet.Modules;
 using DjTtakdotNet.Services;
 using DjTtakdotNet.Utils;
 using Serilog;
@@ -12,11 +13,15 @@ namespace DjTtakdotNet;
 
 internal static class Program
 {
+    private const string DefaultConfigPath = "appsettings.json";
+    private const string ConfigPathArgumentName = "--config";
+
     private static DiscordSocketClient? _client;
+
     private static readonly DiscordSocketConfig SocketConfig = new()
     {
-        GatewayIntents = GatewayIntents.Guilds 
-                         | GatewayIntents.GuildVoiceStates 
+        GatewayIntents = GatewayIntents.Guilds
+                         | GatewayIntents.GuildVoiceStates
                          | GatewayIntents.GuildMessages
                          | GatewayIntents.GuildMembers,
         AlwaysDownloadUsers = true,
@@ -26,7 +31,8 @@ internal static class Program
 
     private static readonly InteractionServiceConfig InteractionServiceConfig = new()
     {
-        LocalizationManager = new ResxLocalizationManager("DjTtakdotNet.Resources.DjTtakLocales", Assembly.GetEntryAssembly(),
+        LocalizationManager = new ResxLocalizationManager("DjTtakdotNet.Resources.DjTtakLocales",
+            Assembly.GetEntryAssembly(),
             new CultureInfo("en-US"), new CultureInfo("pl"))
     };
 
@@ -41,33 +47,40 @@ internal static class Program
                 .WriteTo.Console()
                 .CreateLogger();
 
+            var configurationFile = DefaultConfigPath;
+            if (args.Length > 1 && args[0] == ConfigPathArgumentName)
+                configurationFile = args[1];
+
             var configuration = new ConfigurationBuilder()
-                .AddJsonFile("appsettings.json", optional: false)
+                .AddJsonFile(configurationFile, false)
                 .Build();
-            
+
             var djTtakConfig = new DjTtakConfig(configuration);
-            
+
             var services = new ServiceCollection()
                 .AddSingleton<IDjTtakConfig>(djTtakConfig)
                 .AddSingleton(SocketConfig)
                 .AddSingleton<DiscordSocketClient>()
+                .AddSingleton<DiscordShardedClient>()
                 .AddSingleton<MusicService>()
                 .AddSingleton<QueueService>()
+                .AddSingleton<VoiceEventHandler>()
                 .AddSingleton(x =>
                     new InteractionService(x.GetRequiredService<DiscordSocketClient>(), InteractionServiceConfig))
                 .AddSingleton<InteractionHandler>()
                 .BuildServiceProvider();
 
             _client = services.GetRequiredService<DiscordSocketClient>();
-
             _client.Log += LogAsync;
             _client.Ready += async () =>
             {
-                Log.Information("Bot is ready {0}",_client.CurrentUser.Username);
+                Log.Information("Bot is ready {0}", _client.CurrentUser.Username);
                 await _client.SetActivityAsync(new Game("Music 🎵"));
             };
             await services.GetRequiredService<InteractionHandler>()
                 .InitializeAsync();
+            
+            await services.GetRequiredService<VoiceEventHandler>().InitializeAsync();
             
             await _client.LoginAsync(TokenType.Bot, djTtakConfig.Token);
             await _client.StartAsync();
@@ -75,10 +88,11 @@ internal static class Program
         }
         finally
         {
-            await _client?.StopAsync()!;
+            if (_client != null)
+                await _client.StopAsync();
         }
     }
-    
+
     private static async Task LogAsync(LogMessage message)
     {
         var severity = message.Severity switch

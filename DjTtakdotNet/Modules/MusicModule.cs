@@ -1,26 +1,27 @@
 ﻿using Discord;
 using Discord.Interactions;
-using DjTtakdotNet.Services;
-using Serilog;
 using DjTtakdotNet.Music;
+using DjTtakdotNet.Services;
 using DjTtakdotNet.Utils;
+using Serilog;
 
 namespace DjTtakdotNet.Modules;
 
 public class MusicModule : DjTtakInteractionModule
 {
+    private const short MaxTracksPerPage = 10;
     private readonly MusicService _musicService;
     private readonly QueueService _queueService;
-    private const short MaxTracksPerPage = 10;
-    public MusicModule(MusicService musicService, QueueService queueService, IDjTtakConfig config) : base (config)
+
+    public MusicModule(MusicService musicService, QueueService queueService, IDjTtakConfig config) : base(config)
     {
         _musicService = musicService;
         _queueService = queueService;
         AppDomain.CurrentDomain.ProcessExit += OnShutdown;
         Console.CancelKeyPress += OnShutdown;
     }
-    
-   
+
+
     [SlashCommand("stop", "Stops current playback and leaves voice channel")]
     [RequireContext(ContextType.Guild)]
     public async Task StopPlayback()
@@ -48,31 +49,25 @@ public class MusicModule : DjTtakInteractionModule
 
             if (_musicService.IsConnected && voiceChannel.GuildId != _musicService.CurrentChannel?.GuildId)
             {
-                var followup = await FollowupAsync("❌ DJ is already on different voice channel!");
+                var followup = await FollowupAsync("❌ DJ is already on different VoiceChannel!");
                 _ = DeleteAfterDelay(followup);
                 return;
             }
-            
+
             var trackInfo = await MusicService.GetTrackInfoAsync(query);
-            
-            if (!_musicService.IsConnected || _musicService.CurrentChannel == null || _musicService.CurrentChannel.Id == voiceChannel.Id)
-            {
-                await _musicService.JoinChannelAsync(voiceChannel);
-            }
+
+            if (!_musicService.IsConnected || _musicService.CurrentChannel == null ||
+                _musicService.CurrentChannel.Id == voiceChannel.Id) await _musicService.JoinChannelAsync(voiceChannel);
 
             var isNowPlaying = _musicService.StartQueue(trackInfo);
-            
+
             var embed = new EmbedBuilder();
             if (isNowPlaying)
-            {
-                 embed = BuildNowPlayingEmbed(embed, trackInfo);
-            }
+                embed = BuildNowPlayingEmbed(embed, trackInfo);
             else
-            {
                 embed
                     .WithDescription($"✅ Added to queue: [{trackInfo.Title}]({trackInfo.Url})")
                     .WithColor(Color.Green);
-            }
             var response = await FollowupAsync(embed: embed.Build());
             _ = DeleteAfterDelay(response);
         }
@@ -83,8 +78,8 @@ public class MusicModule : DjTtakInteractionModule
         }
         catch (Exception ex)
         {
-            Log.Error(exception:ex, "Error during playback");
-            var followup = await FollowupAsync($"❌ There was an error during playback, please try again later.");
+            Log.Error(ex, "Error during playback");
+            var followup = await FollowupAsync("\u274c There was an error during playback, please try again later.");
             _ = DeleteAfterDelay(followup);
         }
     }
@@ -100,9 +95,7 @@ public class MusicModule : DjTtakInteractionModule
             .WithColor(Color.Blue);
 
         if (current != null)
-        {
             embed.AddField("Now playing:", $"[{current.Title}]({current.Url}) ({current.DurationString})");
-        }
 
         var totalPages = (queue.Length + 9) / MaxTracksPerPage;
         totalPages = Math.Max(1, totalPages);
@@ -127,8 +120,8 @@ public class MusicModule : DjTtakInteractionModule
                 ? $"Page {page}/{totalPages} | Loop mode: {_queueService.CurrentLoopMode}"
                 : $"Loop mode: {_queueService.CurrentLoopMode}");
 
-            embed.WithTitle($"🎶 Queue");
-        }   
+            embed.WithTitle("\ud83c\udfb6 Queue");
+        }
         else
         {
             embed.WithDescription("Queue is empty!");
@@ -150,9 +143,10 @@ public class MusicModule : DjTtakInteractionModule
             await RespondAsync("There's no current playing track!");
             return;
         }
+
         var queueCount = _queueService.GetQueue().Count();
         var positionText = queueCount > 0 ? $"#{queueCount + 1} (Current + {queueCount} in queue)" : "#1 (Current)";
-        
+
         var embed = BuildNowPlayingEmbed(new EmbedBuilder(), track)
             .AddField("Position in queue", positionText);
 
@@ -162,14 +156,17 @@ public class MusicModule : DjTtakInteractionModule
     [SlashCommand("remove", "Removes track from the queue")]
     [RequireContext(ContextType.Guild)]
     public async Task RemoveTrack(string trackId)
-    {   
+    {
         if (!int.TryParse(trackId, out var id) || id <= 0)
         {
             await RespondAndDispose("Invalid track ID!");
             return;
         }
+
         var removed = _queueService.RemoveTrack(id - 1);
-        await RespondAndDispose(removed ? $"Track #{id} removed from the queue!" : $"Could not remove track #{id}. It might not exist."); 
+        await RespondAndDispose(removed
+            ? $"Track #{id} removed from the queue!"
+            : $"Could not remove track #{id}. It might not exist.");
     }
 
     [SlashCommand("skip", "Skips current track")]
@@ -181,8 +178,9 @@ public class MusicModule : DjTtakInteractionModule
             await RespondAndDispose("There is no track currently playing or in the queue to skip.");
             return;
         }
+
         _musicService.StopCurrentPlayback();
-        await RespondAndDispose("Skipping current track..."); 
+        await RespondAndDispose("Skipping current track...");
     }
 
     [SlashCommand("loop", "Changes the loop mode of the queue")]
@@ -195,24 +193,27 @@ public class MusicModule : DjTtakInteractionModule
             QueueService.LoopMode.None => "OFF",
             QueueService.LoopMode.Single => "Single track loop",
             QueueService.LoopMode.All => "Queue loop",
-            _ => throw new ArgumentOutOfRangeException()
+            _ => throw new ArgumentOutOfRangeException(nameof(mode), @"Invalid loop mode")
         };
 
         await RespondAndDispose($"Loop mode: **{modeText}**");
     }
+
     [SlashCommand("next", "Plays the next track in the queue")]
     [RequireContext(ContextType.Guild)]
     public async Task NextTrack()
     {
         if (_queueService.CurrentTrack == null && _queueService.IsIdle())
         {
-            await RespondAndDispose("There is no track currently playing or in the queue to advance from."); // Slightly adjusted message
+            await RespondAndDispose(
+                "There is no track currently playing or in the queue to advance from."); // Slightly adjusted message
             return;
         }
-        _musicService.StopCurrentPlayback(advanceGracefully: true);
-        await RespondAndDispose("Playing next track..."); 
+
+        _musicService.StopCurrentPlayback(true);
+        await RespondAndDispose("Playing next track...");
     }
-    
+
     [SlashCommand("clear", "Clears the queue")]
     [RequireContext(ContextType.Guild)]
     public async Task ClearTrack()
@@ -222,6 +223,7 @@ public class MusicModule : DjTtakInteractionModule
             await RespondAndDispose("The queue is already empty!");
             return;
         }
+
         _queueService.ClearQueue();
         await RespondAndDispose("Queue cleared!");
     }
@@ -246,7 +248,7 @@ public class MusicModule : DjTtakInteractionModule
         _musicService.DisconnectAsync().GetAwaiter().GetResult();
         Log.Information("Music service disconnected during shutdown.");
     }
-    
+
     private async Task DeleteAfterDelay(IUserMessage message)
     {
         await Task.Delay(DjTtakDjTtakConfig.DeleteMessageTimeout);

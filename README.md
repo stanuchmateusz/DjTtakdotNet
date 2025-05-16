@@ -12,6 +12,7 @@ Works on **Windows** and **Linux**
 ### Setup manual
 Configure **appsettings.json** like in /samples folder and put in working dir. \
 Make sure that you can run ffmpeg and yt-dlp in working directory and that you have opus and sodium libs there too.\
+You can change settings file location via program arguments ``--config path/to/appsettings.json``\
 Run with
 ``dotnet run .``
 

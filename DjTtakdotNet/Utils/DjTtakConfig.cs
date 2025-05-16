@@ -1,49 +1,82 @@
 ﻿using Serilog;
-using Microsoft.Extensions.Configuration; // Added this using
 
 namespace DjTtakdotNet.Utils;
 
 public class DjTtakConfig : IDjTtakConfig
 {
-    private readonly IConfigurationRoot _configuration;
     private const string ConfigName = "DjTtak:";
     private const string DeleteMessageTimeoutSettingName = "DeleteMessageTimeout";
     private const string TokenSettingName = "Token";
     private const string MusicRoleIdSettingName = "MusicRoleId";
-    private const string InactivityTimeoutSettingName = "InactivityTimeoutMinutes"; // <--- Added this
+    private const string InactivityTimeoutSettingName = "InactivityTimeout";
 
-    public int DeleteMessageTimeout { get; set; }
-    public string Token { get; set; }
-    public string MusicRole { get; set; }
-    public int InactivityTimeoutMilliseconds { get; set; }
+    private readonly IConfigurationRoot _configuration;
 
-    public DjTtakConfig( IConfigurationRoot configuration )
+    public DjTtakConfig(IConfigurationRoot configuration)
     {
         _configuration = configuration;
         InitConfiguration();
     }
 
+    public int DeleteMessageTimeout { get; private set; }
+    public string? Token { get; private set; }
+    public string? MusicRole { get; private set; }
+    public int InactivityTimeoutMilliseconds { get; private set; }
+
     private void InitConfiguration()
     {
         try
         {
-            var timeoutInSecs = _configuration.GetValue<int>( ConfigName + DeleteMessageTimeoutSettingName );
-            DeleteMessageTimeout = timeoutInSecs * 1000;
+            var delMessTimeout = _configuration.GetValue<int>(ConfigName + DeleteMessageTimeoutSettingName);
+            if (delMessTimeout < 0)
+                throw new InvalidConfigException("DeleteMessageTimeout cannot be negative");
 
-            var timeoutInMinutes = _configuration.GetValue<int>( ConfigName + InactivityTimeoutSettingName ); // <--- Read new setting
-            // Ensure timeout is positive, default to 5 minutes if not
-            InactivityTimeoutMilliseconds = timeoutInMinutes > 0 ? timeoutInMinutes * 60 * 1000 : 5 * 60 * 1000; // <--- Convert to milliseconds and add validation
+            DeleteMessageTimeout = delMessTimeout * 1000;
 
-            Token = _configuration.GetValue<string>( ConfigName + TokenSettingName );
-            MusicRole = _configuration.GetValue<string>( ConfigName + MusicRoleIdSettingName );
+            var inactivityTimeout = _configuration.GetValue<int>(ConfigName + InactivityTimeoutSettingName);
+            if (inactivityTimeout < 0)
+                throw new InvalidConfigException("InactivityTimeout cannot be negative");
 
-            Log.Information("Configuration loaded: DeleteMessageTimeout={DeleteMessageTimeout}ms, InactivityTimeout={InactivityTimeout}ms",
-                DeleteMessageTimeout, InactivityTimeoutMilliseconds); // <--- Log the loaded values
+            InactivityTimeoutMilliseconds = inactivityTimeout * 1000;
+
+            Token = _configuration.GetValue<string>(ConfigName + TokenSettingName) ??
+                    throw new InvalidConfigException("Token cannot be null");
+
+            if (Token.Length == 0)
+                throw new InvalidConfigException("Token cannot be empty");
+
+            if (Token == "YOUR BOT TOKEN HERE")
+                throw new InvalidConfigException("Please setup the config file, modify appsettings.json");
+
+            MusicRole = _configuration.GetValue<string>(ConfigName + MusicRoleIdSettingName) ??
+                        throw new InvalidOperationException("Token cannot be null");
+
+            Log.Information(
+                "Configuration loaded: DeleteMessageTimeout={DeleteMessageTimeout}ms, InactivityTimeout={InactivityTimeout}ms",
+                DeleteMessageTimeout, InactivityTimeoutMilliseconds);
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Log.Error(e, "Fatal config init error!");
+            if (ex is FormatException or ArgumentException)
+                throw new InvalidConfigException("Invalid configuration format, make sure to use correct types", ex);
+
+            Log.Error(ex, "Fatal config init error!");
             throw;
         }
+    }
+}
+
+public class InvalidConfigException : Exception
+{
+    public InvalidConfigException() : base("Error while loading configuration")
+    {
+    }
+
+    public InvalidConfigException(string message) : base(message)
+    {
+    }
+
+    public InvalidConfigException(string message, Exception inner) : base(message, inner)
+    {
     }
 }
